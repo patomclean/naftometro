@@ -310,12 +310,12 @@ function renderTrips() {
   trips.forEach((trip) => {
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td>${formatDate(trip.created_at)}</td>
-      <td>${trip.driver}</td>
-      <td>${Number(trip.km).toLocaleString('es-AR')}</td>
-      <td>${Number(trip.liters).toFixed(2)}</td>
-      <td><strong>${formatCurrency(trip.cost)}</strong></td>
-      <td class="trip-note" title="${trip.note || ''}">${trip.note || '-'}</td>
+      <td data-label="Fecha ">${formatDate(trip.created_at)}</td>
+      <td data-label="Conductor ">${trip.driver}</td>
+      <td data-label="Km ">${Number(trip.km).toLocaleString('es-AR')}</td>
+      <td data-label="Litros ">${Number(trip.liters).toFixed(2)}</td>
+      <td data-label="Costo "><strong>${formatCurrency(trip.cost)}</strong></td>
+      <td data-label="Nota " class="trip-note" title="${trip.note || ''}">${trip.note || '-'}</td>
       <td></td>
     `;
     // Add delete button safely (avoid innerHTML injection in handler)
