@@ -11,117 +11,131 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
-  <div class="app">
+  <div class="views-container" id="views-container">
 
-    <!-- Header -->
-    <header class="app-header">
-      <h1>Naftometro</h1>
-      <p class="subtitle">Calculadora de nafta entre hermanos</p>
-      <button id="btn-add-vehicle" class="btn btn-primary">+ Agregar vehiculo</button>
-    </header>
+    <!-- ========== VIEW: HOME ========== -->
+    <div class="view" id="view-home">
+      <div class="view-content">
+        <header class="app-header">
+          <h1>Naftometro</h1>
+          <p class="subtitle">Calculadora de nafta entre hermanos</p>
+          <button id="btn-add-vehicle" class="btn btn-primary">+ Agregar vehiculo</button>
+        </header>
 
-    <!-- Vehicle Tabs -->
-    <section class="vehicle-tabs-section">
-      <div id="vehicle-tabs" class="vehicle-tabs"></div>
-      <div id="no-vehicles-msg" class="empty-state">
-        <p>No hay vehiculos cargados. Agrega uno para empezar.</p>
-      </div>
-    </section>
+        <div id="vehicles-grid" class="vehicles-grid"></div>
 
-    <!-- Vehicle Detail (hidden when no vehicle selected) -->
-    <section id="vehicle-detail" class="vehicle-detail hidden">
-
-      <!-- Vehicle Info Card -->
-      <div class="glass-card vehicle-info-card">
-        <div class="vehicle-info-header">
-          <h2 id="vehicle-title"></h2>
-          <div class="vehicle-actions">
-            <button id="btn-edit-vehicle" class="btn-icon" title="Editar precio">&#9998;</button>
-            <button id="btn-delete-vehicle" class="btn-icon btn-icon-danger" title="Eliminar vehiculo">&#128465;</button>
-          </div>
+        <div id="no-vehicles-msg" class="empty-state hidden">
+          <p>No hay vehiculos cargados.</p>
+          <p class="empty-hint">Toca el boton de arriba para agregar uno.</p>
         </div>
-        <div class="vehicle-meta">
-          <span class="badge" id="vehicle-model-badge"></span>
-          <span class="badge" id="vehicle-consumption-badge"></span>
-          <span class="badge" id="vehicle-fuel-type-badge"></span>
-          <span class="badge badge-highlight" id="vehicle-fuel-price-badge"></span>
-          <span class="badge badge-highlight" id="vehicle-cost-km-badge"></span>
-        </div>
-      </div>
 
-      <!-- Trip Form Card -->
-      <div class="glass-card">
-        <h3>Registrar viaje</h3>
-        <form id="trip-form">
-          <div class="form-row">
-            <div class="form-group">
-              <label for="trip-driver">Conductor</label>
-              <select id="trip-driver" required>
-                <option value="">Seleccionar...</option>
-              </select>
-            </div>
-            <div class="form-group">
-              <label for="trip-km">Kilometros</label>
-              <input type="number" id="trip-km" min="0.1" step="0.1" required placeholder="Ej: 25">
-            </div>
-          </div>
-          <div class="form-group">
-            <label for="trip-note">Nota (opcional)</label>
-            <input type="text" id="trip-note" maxlength="100" placeholder="Ej: Ida al trabajo">
-          </div>
-          <div class="cost-preview" id="cost-preview">
-            <span>Costo estimado:</span>
-            <strong id="cost-preview-value">$0,00</strong>
-          </div>
-          <button type="submit" id="btn-submit-trip" class="btn btn-primary btn-block">
-            <span class="btn-text">Registrar viaje</span>
-            <span class="btn-loader hidden"></span>
-          </button>
-        </form>
-      </div>
-
-      <!-- Summary Card -->
-      <div class="glass-card">
-        <div class="section-header">
-          <h3>Resumen de gastos</h3>
-          <button id="btn-clear-trips" class="btn btn-danger btn-sm">Limpiar viajes</button>
-        </div>
-        <div id="summary-grid" class="summary-grid"></div>
-        <div class="summary-total">
-          <span>Total:</span>
-          <strong id="summary-total-value">$0,00</strong>
-        </div>
-      </div>
-
-      <!-- Trip History Card -->
-      <div class="glass-card">
-        <h3>Historial de viajes</h3>
-        <div id="trips-loading" class="loading-spinner hidden">
+        <div id="home-loading" class="loading-spinner">
           <div class="spinner"></div>
           <span>Cargando...</span>
         </div>
-        <div id="trips-empty" class="empty-state hidden">
-          <p>No hay viajes registrados para este vehiculo.</p>
-        </div>
-        <div class="table-wrapper">
-          <table id="trips-table" class="trips-table hidden">
-            <thead>
-              <tr>
-                <th>Fecha</th>
-                <th>Conductor</th>
-                <th>Km</th>
-                <th>Litros</th>
-                <th>Costo</th>
-                <th>Nota</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody id="trips-tbody"></tbody>
-          </table>
-        </div>
       </div>
+    </div>
 
-    </section>
+    <!-- ========== VIEW: DETAIL ========== -->
+    <div class="view" id="view-detail">
+      <div class="view-content">
+
+        <!-- Detail Header (back + title) -->
+        <header class="detail-header">
+          <button id="btn-back" class="btn-icon btn-back" title="Volver">&#8592;</button>
+          <h2 id="detail-title"></h2>
+          <div class="vehicle-actions">
+            <button id="btn-edit-vehicle" class="btn-icon" title="Editar">&#9998;</button>
+            <button id="btn-delete-vehicle" class="btn-icon btn-icon-danger" title="Eliminar">&#128465;</button>
+          </div>
+        </header>
+
+        <!-- Vehicle Info -->
+        <div class="glass-card vehicle-info-card">
+          <div class="vehicle-meta">
+            <span class="badge" id="vehicle-model-badge"></span>
+            <span class="badge" id="vehicle-consumption-badge"></span>
+            <span class="badge" id="vehicle-fuel-type-badge"></span>
+            <span class="badge badge-highlight" id="vehicle-fuel-price-badge"></span>
+            <span class="badge badge-highlight" id="vehicle-cost-km-badge"></span>
+          </div>
+        </div>
+
+        <!-- Trip Form Card -->
+        <div class="glass-card">
+          <h3>Registrar viaje</h3>
+          <form id="trip-form">
+            <div class="form-row">
+              <div class="form-group">
+                <label for="trip-driver">Conductor</label>
+                <select id="trip-driver" required>
+                  <option value="">Seleccionar...</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="trip-km">Kilometros</label>
+                <input type="number" id="trip-km" min="0.1" step="0.1" required placeholder="Ej: 25">
+              </div>
+            </div>
+            <div class="form-group">
+              <label for="trip-note">Nota (opcional)</label>
+              <input type="text" id="trip-note" maxlength="100" placeholder="Ej: Ida al trabajo">
+            </div>
+            <div class="cost-preview" id="cost-preview">
+              <span>Costo estimado:</span>
+              <strong id="cost-preview-value">$0,00</strong>
+            </div>
+            <button type="submit" id="btn-submit-trip" class="btn btn-primary btn-block">
+              <span class="btn-text">Registrar viaje</span>
+              <span class="btn-loader hidden"></span>
+            </button>
+          </form>
+        </div>
+
+        <!-- Summary Card -->
+        <div class="glass-card">
+          <div class="section-header">
+            <h3>Resumen de gastos</h3>
+            <button id="btn-clear-trips" class="btn btn-danger btn-sm">Limpiar viajes</button>
+          </div>
+          <div id="summary-grid" class="summary-grid"></div>
+          <div class="summary-total">
+            <span>Total:</span>
+            <strong id="summary-total-value">$0,00</strong>
+          </div>
+        </div>
+
+        <!-- Trip History Card -->
+        <div class="glass-card">
+          <h3>Historial de viajes</h3>
+          <div id="trips-loading" class="loading-spinner hidden">
+            <div class="spinner"></div>
+            <span>Cargando...</span>
+          </div>
+          <div id="trips-empty" class="empty-state hidden">
+            <p>No hay viajes registrados para este vehiculo.</p>
+          </div>
+          <div class="table-wrapper">
+            <table id="trips-table" class="trips-table hidden">
+              <thead>
+                <tr>
+                  <th>Fecha</th>
+                  <th>Conductor</th>
+                  <th>Km</th>
+                  <th>Litros</th>
+                  <th>Costo</th>
+                  <th>Nota</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="trips-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
   </div>
 
   <!-- Vehicle Modal (Add/Edit) -->

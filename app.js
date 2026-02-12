@@ -40,7 +40,7 @@ const state = {
   vehicles: [],
   activeVehicleId: null,
   trips: [],
-  confirmAction: null, // callback for confirm modal
+  confirmAction: null,
 };
 
 // ============================================================
@@ -49,10 +49,11 @@ const state = {
 
 const $ = (sel) => document.querySelector(sel);
 const dom = {
-  vehicleTabs: $('#vehicle-tabs'),
+  viewsContainer: $('#views-container'),
+  vehiclesGrid: $('#vehicles-grid'),
   noVehiclesMsg: $('#no-vehicles-msg'),
-  vehicleDetail: $('#vehicle-detail'),
-  vehicleTitle: $('#vehicle-title'),
+  homeLoading: $('#home-loading'),
+  detailTitle: $('#detail-title'),
   vehicleModelBadge: $('#vehicle-model-badge'),
   vehicleConsumptionBadge: $('#vehicle-consumption-badge'),
   vehicleFuelTypeBadge: $('#vehicle-fuel-type-badge'),
@@ -140,7 +141,26 @@ function getActiveVehicle() {
 }
 
 // ============================================================
-// 6. SUPABASE DATA FUNCTIONS (CRUD)
+// 6. NAVIGATION
+// ============================================================
+
+function navigateTo(view) {
+  if (view === 'detail') {
+    dom.viewsContainer.classList.add('show-detail');
+  } else {
+    dom.viewsContainer.classList.remove('show-detail');
+    // Scroll home view to top
+    $('#view-home').scrollTop = 0;
+  }
+}
+
+function navigateBack() {
+  navigateTo('home');
+  renderVehicleCards();
+}
+
+// ============================================================
+// 7. SUPABASE DATA FUNCTIONS (CRUD)
 // ============================================================
 
 async function fetchVehicles() {
@@ -218,14 +238,12 @@ async function deleteTripsForVehicle(vehicleId) {
 }
 
 async function recalculateTrips(vehicleId, consumption, fuelPrice) {
-  // Fetch all trips for this vehicle
   const { data: trips, error: fetchErr } = await db
     .from('trips')
     .select('*')
     .eq('vehicle_id', vehicleId);
   if (fetchErr) throw fetchErr;
 
-  // Update each trip with recalculated values
   for (const trip of trips) {
     const { liters, cost } = calculateCost(trip.km, consumption, fuelPrice);
     const { error } = await db
@@ -236,39 +254,78 @@ async function recalculateTrips(vehicleId, consumption, fuelPrice) {
   }
 }
 
+// Fetch the latest trip for each vehicle (for home cards preview)
+async function fetchLastTrips(vehicleIds) {
+  if (vehicleIds.length === 0) return {};
+  const { data, error } = await db
+    .from('trips')
+    .select('vehicle_id, driver, created_at')
+    .in('vehicle_id', vehicleIds)
+    .order('created_at', { ascending: false });
+  if (error) return {};
+  // Get only the first (most recent) trip per vehicle
+  const lastTrips = {};
+  data.forEach((t) => {
+    if (!lastTrips[t.vehicle_id]) lastTrips[t.vehicle_id] = t;
+  });
+  return lastTrips;
+}
+
 // ============================================================
-// 7. UI RENDERING FUNCTIONS
+// 8. UI RENDERING FUNCTIONS
 // ============================================================
 
-function renderVehicleTabs() {
-  dom.vehicleTabs.innerHTML = '';
+async function renderVehicleCards() {
+  dom.vehiclesGrid.innerHTML = '';
+  toggleHidden(dom.homeLoading, true);
 
   if (state.vehicles.length === 0) {
     toggleHidden(dom.noVehiclesMsg, false);
-    toggleHidden(dom.vehicleDetail, true);
     return;
   }
 
   toggleHidden(dom.noVehiclesMsg, true);
 
+  // Fetch last trip per vehicle for preview
+  const vehicleIds = state.vehicles.map((v) => v.id);
+  const lastTrips = await fetchLastTrips(vehicleIds);
+
   state.vehicles.forEach((v) => {
-    const btn = document.createElement('button');
-    btn.className = 'tab' + (v.id === state.activeVehicleId ? ' active' : '');
-    btn.textContent = v.name;
-    btn.addEventListener('click', () => selectVehicle(v.id));
-    dom.vehicleTabs.appendChild(btn);
+    const drivers = v.drivers || [];
+    const lastTrip = lastTrips[v.id];
+    const costPerKm = v.fuel_price / v.consumption;
+
+    const card = document.createElement('div');
+    card.className = 'vehicle-card';
+    card.innerHTML = `
+      <div class="vehicle-card-header">
+        <div>
+          <div class="vehicle-card-name">${v.name}</div>
+          <div class="vehicle-card-model">${v.model}</div>
+        </div>
+        <span class="vehicle-card-arrow">&#8250;</span>
+      </div>
+      <div class="vehicle-card-badges">
+        <span class="badge">${v.consumption} km/l</span>
+        <span class="badge">${v.fuel_type}</span>
+        <span class="badge badge-highlight">${formatCurrency(v.fuel_price)}/l</span>
+        <span class="badge badge-highlight">${formatCurrency(costPerKm)}/km</span>
+      </div>
+      <div class="vehicle-card-footer">
+        <span>${drivers.length} persona${drivers.length !== 1 ? 's' : ''}</span>
+        <span>${lastTrip ? formatDate(lastTrip.created_at) + ' · ' + lastTrip.driver : 'Sin viajes'}</span>
+      </div>
+    `;
+    card.addEventListener('click', () => selectVehicle(v.id));
+    dom.vehiclesGrid.appendChild(card);
   });
 }
 
 function renderVehicleDetail() {
   const vehicle = getActiveVehicle();
-  if (!vehicle) {
-    toggleHidden(dom.vehicleDetail, true);
-    return;
-  }
+  if (!vehicle) return;
 
-  toggleHidden(dom.vehicleDetail, false);
-  dom.vehicleTitle.textContent = vehicle.name;
+  dom.detailTitle.textContent = vehicle.name;
   dom.vehicleModelBadge.textContent = vehicle.model;
   dom.vehicleConsumptionBadge.textContent = vehicle.consumption + ' km/l';
   dom.vehicleFuelTypeBadge.textContent = vehicle.fuel_type;
@@ -277,7 +334,6 @@ function renderVehicleDetail() {
   const costPerKm = vehicle.fuel_price / vehicle.consumption;
   dom.vehicleCostKmBadge.textContent = formatCurrency(costPerKm) + '/km';
 
-  // Update trip driver select with this vehicle's drivers
   renderDriverSelect(vehicle.drivers || []);
 }
 
@@ -318,7 +374,6 @@ function renderTrips() {
       <td data-label="Nota " class="trip-note" title="${trip.note || ''}">${trip.note || '-'}</td>
       <td></td>
     `;
-    // Add delete button safely (avoid innerHTML injection in handler)
     const deleteBtn = document.createElement('button');
     deleteBtn.className = 'btn-icon btn-icon-danger';
     deleteBtn.title = 'Eliminar viaje';
@@ -349,7 +404,6 @@ function renderSummary() {
   });
 
   dom.summaryGrid.innerHTML = '';
-
   let grandTotal = 0;
 
   drivers.forEach((driver) => {
@@ -370,7 +424,6 @@ function renderSummary() {
 }
 
 function populateFormOptions() {
-  // Populate model select
   Object.keys(VEHICLE_MODELS).forEach((model) => {
     const opt = document.createElement('option');
     opt.value = model;
@@ -378,7 +431,6 @@ function populateFormOptions() {
     dom.vehicleModelSelect.appendChild(opt);
   });
 
-  // Populate fuel type select
   FUEL_TYPES.forEach((type) => {
     const opt = document.createElement('option');
     opt.value = type;
@@ -413,13 +465,16 @@ function getDriverNames() {
 }
 
 // ============================================================
-// 8. EVENT HANDLERS
+// 9. EVENT HANDLERS
 // ============================================================
 
 async function selectVehicle(vehicleId) {
   state.activeVehicleId = vehicleId;
-  renderVehicleTabs();
   renderVehicleDetail();
+  navigateTo('detail');
+
+  // Scroll detail view to top
+  $('#view-detail').scrollTop = 0;
 
   // Show loading, hide table and empty
   toggleHidden(dom.tripsLoading, false);
@@ -452,11 +507,9 @@ function openVehicleModal(mode, vehicleData) {
     dom.vehicleConsumptionInput.value = vehicleData.consumption;
     dom.vehicleFuelTypeSelect.value = vehicleData.fuel_type;
     dom.vehicleFuelPriceInput.value = vehicleData.fuel_price;
-    // Load existing drivers
     (vehicleData.drivers || []).forEach((name) => addDriverInput(name));
   } else {
     dom.vehicleFormId.value = '';
-    // Start with 2 empty driver inputs
     addDriverInput('');
     addDriverInput('');
   }
@@ -496,7 +549,6 @@ async function handleVehicleSubmit(e) {
 
       await updateVehicle(editId, payload);
 
-      // If price or consumption changed, recalculate all trips
       if (oldVehicle &&
         (oldVehicle.fuel_price !== payload.fuel_price ||
           oldVehicle.consumption !== payload.consumption)) {
@@ -510,9 +562,8 @@ async function handleVehicleSubmit(e) {
     }
 
     state.vehicles = await fetchVehicles();
-    renderVehicleTabs();
 
-    // If editing the active vehicle, refresh everything
+    // If editing the active vehicle and we're on detail view, refresh
     if (state.modalMode === 'edit' && parseInt(dom.vehicleFormId.value) === state.activeVehicleId) {
       renderVehicleDetail();
       state.trips = await fetchTrips(state.activeVehicleId);
@@ -520,10 +571,8 @@ async function handleVehicleSubmit(e) {
       renderSummary();
     }
 
-    // If first vehicle added, auto-select it
-    if (state.vehicles.length === 1) {
-      selectVehicle(state.vehicles[0].id);
-    }
+    // Refresh home cards
+    renderVehicleCards();
 
     closeVehicleModal();
   } catch (err) {
@@ -550,14 +599,9 @@ function handleDeleteVehicleClick() {
       await deleteVehicle(state.activeVehicleId);
       showToast('Vehiculo eliminado');
       state.vehicles = await fetchVehicles();
-      state.activeVehicleId = state.vehicles.length > 0 ? state.vehicles[0].id : null;
-      renderVehicleTabs();
-      if (state.activeVehicleId) {
-        await selectVehicle(state.activeVehicleId);
-      } else {
-        toggleHidden(dom.vehicleDetail, true);
-      }
+      state.activeVehicleId = null;
       toggleHidden(dom.confirmModal, true);
+      navigateBack();
     } catch (err) {
       showToast('Error: ' + err.message, 'error');
     } finally {
@@ -688,12 +732,15 @@ function handleModelChange() {
 }
 
 // ============================================================
-// 9. EVENT BINDING & INITIALIZATION
+// 10. EVENT BINDING & INITIALIZATION
 // ============================================================
 
 function bindEvents() {
   // Add vehicle
   $('#btn-add-vehicle').addEventListener('click', () => openVehicleModal('add'));
+
+  // Back button
+  $('#btn-back').addEventListener('click', navigateBack);
 
   // Edit vehicle
   $('#btn-edit-vehicle').addEventListener('click', () => {
@@ -722,7 +769,6 @@ function bindEvents() {
   dom.tripForm.addEventListener('submit', handleTripSubmit);
   dom.tripKm.addEventListener('input', handleTripKmInput);
 
-  // Enter on km field submits the form
   dom.tripKm.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') {
       e.preventDefault();
@@ -752,13 +798,11 @@ async function init() {
 
   try {
     state.vehicles = await fetchVehicles();
-    renderVehicleTabs();
-    if (state.vehicles.length > 0) {
-      await selectVehicle(state.vehicles[0].id);
-    }
+    await renderVehicleCards();
   } catch (err) {
     showToast('Error de conexion con la base de datos. Verifica tu conexion a internet.', 'error');
     console.error('Init error:', err);
+    toggleHidden(dom.homeLoading, true);
   }
 }
 

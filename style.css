@@ -59,8 +59,27 @@ body {
   overscroll-behavior: none;
 }
 
-/* --- Layout --- */
-.app {
+/* --- Views Container (horizontal slide navigation) --- */
+.views-container {
+  display: flex;
+  width: 200%;
+  transition: transform 350ms cubic-bezier(0.4, 0, 0.2, 1);
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+.views-container.show-detail {
+  transform: translateX(-50%);
+}
+
+.view {
+  width: 50%;
+  min-height: 100vh;
+  min-height: 100dvh;
+  overflow-y: auto;
+}
+
+.view-content {
   max-width: 720px;
   margin: 0 auto;
   padding: 1rem;
@@ -68,6 +87,99 @@ body {
   padding-bottom: calc(1rem + var(--safe-bottom));
   padding-left: calc(1rem + var(--safe-left));
   padding-right: calc(1rem + var(--safe-right));
+}
+
+/* --- Detail Header --- */
+.detail-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 0 1.25rem;
+}
+
+.detail-header h2 {
+  flex: 1;
+  font-size: 1.2rem;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.btn-back {
+  font-size: 1.4rem;
+  font-weight: 700;
+}
+
+/* --- Vehicle Cards Grid (Home) --- */
+.vehicles-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.75rem;
+}
+
+.vehicle-card {
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--glass-shadow);
+  padding: 1.15rem;
+  cursor: pointer;
+  transition: all var(--transition);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.vehicle-card:active {
+  transform: scale(0.98);
+  background: rgba(255, 255, 255, 0.09);
+}
+
+.vehicle-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 0.5rem;
+}
+
+.vehicle-card-name {
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+
+.vehicle-card-model {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.vehicle-card-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-bottom: 0.65rem;
+}
+
+.vehicle-card-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: 0.5rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.vehicle-card-arrow {
+  color: var(--color-primary);
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+
+.empty-hint {
+  font-size: 0.85rem;
+  margin-top: 0.25rem;
+  color: var(--text-muted);
 }
 
 /* --- Glass Card --- */
@@ -103,72 +215,14 @@ body {
   margin-bottom: 1.25rem;
 }
 
-/* --- Vehicle Tabs --- */
-.vehicle-tabs-section {
-  margin-bottom: 1.25rem;
-}
-
-.vehicle-tabs {
-  display: flex;
-  gap: 0.5rem;
-  overflow-x: auto;
-  padding-bottom: 0.5rem;
-  -webkit-overflow-scrolling: touch;
-  scrollbar-width: thin;
-  scrollbar-color: var(--glass-border) transparent;
-}
-
-.vehicle-tabs::-webkit-scrollbar {
-  height: 4px;
-}
-
-.vehicle-tabs::-webkit-scrollbar-thumb {
-  background: var(--glass-border);
-  border-radius: 4px;
-}
-
-.tab {
-  flex-shrink: 0;
-  padding: 0.6rem 1.25rem;
-  min-height: 44px;
-  border: 1px solid var(--glass-border);
-  border-radius: 999px;
-  background: var(--glass-bg);
-  color: var(--text-secondary);
-  font-size: 0.9rem;
-  cursor: pointer;
-  transition: all var(--transition);
-  white-space: nowrap;
-}
-
-.tab:hover {
-  background: var(--color-primary-light);
-  color: var(--text-primary);
-}
-
-.tab.active {
-  background: var(--color-primary);
-  color: #fff;
-  border-color: var(--color-primary);
-  font-weight: 600;
-}
-
-/* --- Vehicle Detail --- */
-.vehicle-detail {
+/* --- Vehicle Detail (view-detail content spacing) --- */
+#view-detail .view-content {
   display: grid;
-  gap: 1.25rem;
-}
-
-.vehicle-info-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
   gap: 1rem;
 }
 
-.vehicle-info-header h2 {
-  font-size: 1.3rem;
-  font-weight: 700;
+#view-detail .view-content > .detail-header {
+  margin-bottom: 0;
 }
 
 .vehicle-actions {
@@ -699,8 +753,12 @@ h3 {
     grid-template-columns: 1fr;
   }
 
-  .vehicle-info-header h2 {
-    font-size: 1.1rem;
+  .detail-header h2 {
+    font-size: 1rem;
+  }
+
+  .vehicle-card {
+    padding: 1rem;
   }
 
   .toast {
@@ -765,6 +823,10 @@ h3 {
 
   .app-header h1 {
     font-size: 2.5rem;
+  }
+
+  .vehicles-grid {
+    grid-template-columns: 1fr 1fr;
   }
 
   /* Center modal on larger screens */
