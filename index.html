@@ -7,6 +7,9 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="theme-color" content="#0f0c29">
   <title>Naftometro</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icons/icon-192.svg">
+  <link rel="icon" type="image/svg+xml" href="icons/icon-192.svg">
   <link rel="stylesheet" href="style.css">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
@@ -29,9 +32,9 @@
           <p class="empty-hint">Toca el boton de arriba para agregar uno.</p>
         </div>
 
-        <div id="home-loading" class="loading-spinner">
-          <div class="spinner"></div>
-          <span>Cargando...</span>
+        <div id="home-loading" class="skeleton-grid">
+          <div class="skeleton-card"><div class="skeleton-line w60"></div><div class="skeleton-line w40"></div><div class="skeleton-badges"><span class="skeleton-badge"></span><span class="skeleton-badge"></span><span class="skeleton-badge"></span></div><div class="skeleton-line w80"></div></div>
+          <div class="skeleton-card"><div class="skeleton-line w60"></div><div class="skeleton-line w40"></div><div class="skeleton-badges"><span class="skeleton-badge"></span><span class="skeleton-badge"></span><span class="skeleton-badge"></span></div><div class="skeleton-line w80"></div></div>
         </div>
       </div>
     </div>
@@ -45,6 +48,7 @@
           <button id="btn-back" class="btn-icon btn-back" title="Volver">&#8592;</button>
           <h2 id="detail-title"></h2>
           <div class="vehicle-actions">
+            <button id="btn-share" class="btn-icon" title="Compartir">&#8599;</button>
             <button id="btn-edit-vehicle" class="btn-icon" title="Editar">&#9998;</button>
             <button id="btn-delete-vehicle" class="btn-icon btn-icon-danger" title="Eliminar">&#128465;</button>
           </div>
@@ -102,6 +106,24 @@
           <div class="summary-total">
             <span>Total:</span>
             <strong id="summary-total-value">$0,00</strong>
+          </div>
+        </div>
+
+        <!-- Balances Card -->
+        <div class="glass-card">
+          <div class="section-header">
+            <h3>Balances</h3>
+            <button id="btn-share-balances" class="btn btn-secondary btn-sm">Compartir</button>
+          </div>
+          <div id="balances-grid" class="balances-grid"></div>
+          <div id="payments-section">
+            <div class="section-header" style="margin-top:1rem">
+              <h4 class="payments-title">Historial de pagos</h4>
+            </div>
+            <div id="payments-list" class="payments-list"></div>
+            <div id="payments-empty" class="empty-state-sm hidden">
+              <p>No hay pagos registrados.</p>
+            </div>
           </div>
         </div>
 
@@ -178,6 +200,31 @@
         </div>
         <button type="submit" id="btn-submit-vehicle" class="btn btn-primary btn-block">
           <span class="btn-text">Guardar</span>
+          <span class="btn-loader hidden"></span>
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Payment Modal -->
+  <div id="payment-modal" class="modal-overlay hidden">
+    <div class="modal glass-card modal-sm">
+      <div class="modal-header">
+        <h3 id="payment-modal-title">Registrar pago</h3>
+        <button id="btn-close-payment-modal" class="btn-icon">&times;</button>
+      </div>
+      <form id="payment-form">
+        <input type="hidden" id="payment-driver">
+        <div class="form-group">
+          <label for="payment-amount">Monto ($)</label>
+          <input type="number" id="payment-amount" min="1" step="0.01" required placeholder="Ej: 3200">
+        </div>
+        <div class="form-group">
+          <label for="payment-note">Nota (opcional)</label>
+          <input type="text" id="payment-note" maxlength="100" placeholder="Ej: Transferencia">
+        </div>
+        <button type="submit" id="btn-submit-payment" class="btn btn-primary btn-block">
+          <span class="btn-text">Registrar pago</span>
           <span class="btn-loader hidden"></span>
         </button>
       </form>

@@ -40,7 +40,9 @@ const state = {
   vehicles: [],
   activeVehicleId: null,
   trips: [],
+  payments: [],
   confirmAction: null,
+  lastVisitedVehicleId: null,
 };
 
 // ============================================================
@@ -67,6 +69,9 @@ const dom = {
   btnSubmitTrip: $('#btn-submit-trip'),
   summaryGrid: $('#summary-grid'),
   summaryTotalValue: $('#summary-total-value'),
+  balancesGrid: $('#balances-grid'),
+  paymentsList: $('#payments-list'),
+  paymentsEmpty: $('#payments-empty'),
   tripsLoading: $('#trips-loading'),
   tripsEmpty: $('#trips-empty'),
   tripsTable: $('#trips-table'),
@@ -83,6 +88,12 @@ const dom = {
   driversContainer: $('#drivers-container'),
   btnAddDriver: $('#btn-add-driver'),
   btnSubmitVehicle: $('#btn-submit-vehicle'),
+  paymentModal: $('#payment-modal'),
+  paymentForm: $('#payment-form'),
+  paymentDriver: $('#payment-driver'),
+  paymentAmount: $('#payment-amount'),
+  paymentNote: $('#payment-note'),
+  btnSubmitPayment: $('#btn-submit-payment'),
   confirmModal: $('#confirm-modal'),
   confirmTitle: $('#confirm-title'),
   confirmMessage: $('#confirm-message'),
@@ -107,6 +118,19 @@ function formatDate(isoString) {
     ' ' + d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
 }
 
+function getDateGroup(isoString) {
+  const d = new Date(isoString);
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const tripDay = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const diffDays = Math.floor((today - tripDay) / 86400000);
+
+  if (diffDays === 0) return 'Hoy';
+  if (diffDays === 1) return 'Ayer';
+  if (diffDays <= 7) return 'Esta semana';
+  return 'Anteriores';
+}
+
 function calculateCost(km, consumption, fuelPrice) {
   const liters = km / consumption;
   const cost = liters * fuelPrice;
@@ -114,7 +138,7 @@ function calculateCost(km, consumption, fuelPrice) {
 }
 
 function toggleHidden(el, hide) {
-  el.classList.toggle('hidden', hide);
+  if (el) el.classList.toggle('hidden', hide);
 }
 
 function setButtonLoading(btn, loading) {
@@ -136,6 +160,10 @@ function showToast(message, type = 'success') {
   }, 3000);
 }
 
+function haptic() {
+  if (navigator.vibrate) navigator.vibrate(10);
+}
+
 function getActiveVehicle() {
   return state.vehicles.find((v) => v.id === state.activeVehicleId) || null;
 }
@@ -149,7 +177,6 @@ function navigateTo(view) {
     dom.viewsContainer.classList.add('show-detail');
   } else {
     dom.viewsContainer.classList.remove('show-detail');
-    // Scroll home view to top
     $('#view-home').scrollTop = 0;
   }
 }
@@ -160,7 +187,73 @@ function navigateBack() {
 }
 
 // ============================================================
-// 7. SUPABASE DATA FUNCTIONS (CRUD)
+// 7. SWIPE GESTURE
+// ============================================================
+
+function initSwipeGesture() {
+  const detailView = $('#view-detail');
+  let startX = 0;
+  let startY = 0;
+  let tracking = false;
+  let swiping = false;
+
+  detailView.addEventListener('touchstart', (e) => {
+    const touch = e.touches[0];
+    // Only start tracking if touch begins near left edge (first 40px)
+    // or anywhere for broader swipe
+    startX = touch.clientX;
+    startY = touch.clientY;
+    tracking = true;
+    swiping = false;
+  }, { passive: true });
+
+  detailView.addEventListener('touchmove', (e) => {
+    if (!tracking) return;
+    const touch = e.touches[0];
+    const deltaX = touch.clientX - startX;
+    const deltaY = Math.abs(touch.clientY - startY);
+
+    // If vertical scroll dominates, stop tracking
+    if (deltaY > 50 && !swiping) {
+      tracking = false;
+      return;
+    }
+
+    // Only activate swipe if moving right with enough horizontal distance
+    if (deltaX > 20 && deltaY < 50) {
+      swiping = true;
+      dom.viewsContainer.classList.add('swiping');
+      // Map deltaX to translateX. Detail view starts at -50%, so we offset
+      const percent = Math.min(deltaX / window.innerWidth * 50, 50);
+      dom.viewsContainer.style.transform = `translateX(${-50 + percent}%)`;
+    }
+  }, { passive: true });
+
+  detailView.addEventListener('touchend', (e) => {
+    if (!swiping) {
+      tracking = false;
+      return;
+    }
+
+    dom.viewsContainer.classList.remove('swiping');
+    dom.viewsContainer.style.transform = '';
+
+    const touch = e.changedTouches[0];
+    const deltaX = touch.clientX - startX;
+
+    // If swiped more than 80px or 25% of screen, go back
+    if (deltaX > 80 || deltaX > window.innerWidth * 0.25) {
+      navigateBack();
+      haptic();
+    }
+
+    tracking = false;
+    swiping = false;
+  }, { passive: true });
+}
+
+// ============================================================
+// 8. SUPABASE DATA FUNCTIONS (CRUD)
 // ============================================================
 
 async function fetchVehicles() {
@@ -254,7 +347,6 @@ async function recalculateTrips(vehicleId, consumption, fuelPrice) {
   }
 }
 
-// Fetch the latest trip for each vehicle (for home cards preview)
 async function fetchLastTrips(vehicleIds) {
   if (vehicleIds.length === 0) return {};
   const { data, error } = await db
@@ -263,7 +355,6 @@ async function fetchLastTrips(vehicleIds) {
     .in('vehicle_id', vehicleIds)
     .order('created_at', { ascending: false });
   if (error) return {};
-  // Get only the first (most recent) trip per vehicle
   const lastTrips = {};
   data.forEach((t) => {
     if (!lastTrips[t.vehicle_id]) lastTrips[t.vehicle_id] = t;
@@ -271,8 +362,38 @@ async function fetchLastTrips(vehicleIds) {
   return lastTrips;
 }
 
+// --- Payments CRUD ---
+
+async function fetchPayments(vehicleId) {
+  const { data, error } = await db
+    .from('payments')
+    .select('*')
+    .eq('vehicle_id', vehicleId)
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return data;
+}
+
+async function createPayment(payment) {
+  const { data, error } = await db
+    .from('payments')
+    .insert(payment)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+async function deletePayment(id) {
+  const { error } = await db
+    .from('payments')
+    .delete()
+    .eq('id', id);
+  if (error) throw error;
+}
+
 // ============================================================
-// 8. UI RENDERING FUNCTIONS
+// 9. UI RENDERING FUNCTIONS
 // ============================================================
 
 async function renderVehicleCards() {
@@ -286,17 +407,18 @@ async function renderVehicleCards() {
 
   toggleHidden(dom.noVehiclesMsg, true);
 
-  // Fetch last trip per vehicle for preview
   const vehicleIds = state.vehicles.map((v) => v.id);
   const lastTrips = await fetchLastTrips(vehicleIds);
 
-  state.vehicles.forEach((v) => {
+  state.vehicles.forEach((v, index) => {
     const drivers = v.drivers || [];
     const lastTrip = lastTrips[v.id];
     const costPerKm = v.fuel_price / v.consumption;
+    const isLastVisited = v.id === state.lastVisitedVehicleId;
 
     const card = document.createElement('div');
-    card.className = 'vehicle-card';
+    card.className = 'vehicle-card' + (isLastVisited ? ' last-visited' : '');
+    card.style.animationDelay = (index * 60) + 'ms';
     card.innerHTML = `
       <div class="vehicle-card-header">
         <div>
@@ -335,6 +457,15 @@ function renderVehicleDetail() {
   dom.vehicleCostKmBadge.textContent = formatCurrency(costPerKm) + '/km';
 
   renderDriverSelect(vehicle.drivers || []);
+
+  // Apply stagger animation to detail elements
+  const detailContent = $('#view-detail .view-content');
+  detailContent.classList.remove('detail-stagger');
+  void detailContent.offsetWidth; // force reflow
+  detailContent.classList.add('detail-stagger');
+  Array.from(detailContent.children).forEach((child, i) => {
+    child.style.animationDelay = (i * 50) + 'ms';
+  });
 }
 
 function renderDriverSelect(drivers) {
@@ -363,7 +494,18 @@ function renderTrips() {
 
   dom.tripsTbody.innerHTML = '';
 
+  let currentGroup = '';
+
   trips.forEach((trip) => {
+    // Date grouping
+    const group = getDateGroup(trip.created_at);
+    if (group !== currentGroup) {
+      currentGroup = group;
+      const groupRow = document.createElement('tr');
+      groupRow.innerHTML = `<td colspan="7" class="trip-date-group">${group}</td>`;
+      dom.tripsTbody.appendChild(groupRow);
+    }
+
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td data-label="Fecha ">${formatDate(trip.created_at)}</td>
@@ -423,6 +565,96 @@ function renderSummary() {
   dom.summaryTotalValue.textContent = formatCurrency(grandTotal);
 }
 
+function renderBalances() {
+  const vehicle = getActiveVehicle();
+  const drivers = vehicle ? (vehicle.drivers || []) : [];
+  const trips = state.trips;
+  const payments = state.payments;
+
+  // Calculate totals per driver
+  const tripTotals = {};
+  const paymentTotals = {};
+  drivers.forEach((d) => {
+    tripTotals[d] = 0;
+    paymentTotals[d] = 0;
+  });
+
+  trips.forEach((t) => {
+    if (tripTotals[t.driver] !== undefined) {
+      tripTotals[t.driver] += Number(t.cost);
+    }
+  });
+
+  payments.forEach((p) => {
+    if (paymentTotals[p.driver] !== undefined) {
+      paymentTotals[p.driver] += Number(p.amount);
+    }
+  });
+
+  dom.balancesGrid.innerHTML = '';
+
+  drivers.forEach((driver) => {
+    const spent = tripTotals[driver];
+    const paid = paymentTotals[driver];
+    const balance = spent - paid;
+    const isClear = balance <= 0;
+
+    const card = document.createElement('div');
+    card.className = 'balance-card';
+    card.innerHTML = `
+      <div class="driver-name">${driver}</div>
+      <div class="balance-amount ${isClear ? 'clear' : 'debt'}">${isClear ? 'Al dia' : formatCurrency(balance)}</div>
+      <div class="balance-detail">Gastado: ${formatCurrency(spent)} · Pagado: ${formatCurrency(paid)}</div>
+      ${isClear
+        ? '<span class="badge-clear">Saldado</span>'
+        : `<button class="btn-pay" data-driver="${driver}" data-balance="${balance.toFixed(2)}">Registrar pago</button>`
+      }
+    `;
+
+    // Bind pay button
+    const payBtn = card.querySelector('.btn-pay');
+    if (payBtn) {
+      payBtn.addEventListener('click', () => openPaymentModal(driver, balance));
+    }
+
+    dom.balancesGrid.appendChild(card);
+  });
+}
+
+function renderPaymentHistory() {
+  const payments = state.payments;
+  dom.paymentsList.innerHTML = '';
+
+  if (payments.length === 0) {
+    toggleHidden(dom.paymentsEmpty, false);
+    return;
+  }
+
+  toggleHidden(dom.paymentsEmpty, true);
+
+  payments.forEach((p) => {
+    const item = document.createElement('div');
+    item.className = 'payment-item';
+    item.innerHTML = `
+      <div class="payment-info">
+        <div class="payment-driver">${p.driver}</div>
+        <div class="payment-meta">${formatDate(p.created_at)}${p.note ? ' · ' + p.note : ''}</div>
+      </div>
+      <span class="payment-amount">${formatCurrency(p.amount)}</span>
+    `;
+
+    const deleteBtn = document.createElement('button');
+    deleteBtn.className = 'btn-icon btn-icon-danger';
+    deleteBtn.title = 'Deshacer pago';
+    deleteBtn.innerHTML = '&times;';
+    deleteBtn.style.fontSize = '1.1rem';
+    deleteBtn.addEventListener('click', () => handleDeletePayment(p));
+    item.appendChild(deleteBtn);
+
+    dom.paymentsList.appendChild(item);
+  });
+}
+
 function populateFormOptions() {
   Object.keys(VEHICLE_MODELS).forEach((model) => {
     const opt = document.createElement('option');
@@ -465,28 +697,34 @@ function getDriverNames() {
 }
 
 // ============================================================
-// 9. EVENT HANDLERS
+// 10. EVENT HANDLERS
 // ============================================================
 
 async function selectVehicle(vehicleId) {
   state.activeVehicleId = vehicleId;
+  state.lastVisitedVehicleId = vehicleId;
   renderVehicleDetail();
   navigateTo('detail');
 
-  // Scroll detail view to top
   $('#view-detail').scrollTop = 0;
 
-  // Show loading, hide table and empty
   toggleHidden(dom.tripsLoading, false);
   toggleHidden(dom.tripsTable, true);
   toggleHidden(dom.tripsEmpty, true);
 
   try {
-    state.trips = await fetchTrips(vehicleId);
+    const [trips, payments] = await Promise.all([
+      fetchTrips(vehicleId),
+      fetchPayments(vehicleId),
+    ]);
+    state.trips = trips;
+    state.payments = payments;
     renderTrips();
     renderSummary();
+    renderBalances();
+    renderPaymentHistory();
   } catch (err) {
-    showToast('Error al cargar viajes: ' + err.message, 'error');
+    showToast('Error al cargar datos: ' + err.message, 'error');
     toggleHidden(dom.tripsLoading, true);
   }
 }
@@ -556,24 +794,30 @@ async function handleVehicleSubmit(e) {
       }
 
       showToast('Vehiculo actualizado');
+      haptic();
     } else {
       await createVehicle(payload);
       showToast('Vehiculo agregado');
+      haptic();
     }
 
     state.vehicles = await fetchVehicles();
 
-    // If editing the active vehicle and we're on detail view, refresh
     if (state.modalMode === 'edit' && parseInt(dom.vehicleFormId.value) === state.activeVehicleId) {
       renderVehicleDetail();
-      state.trips = await fetchTrips(state.activeVehicleId);
+      const [trips, payments] = await Promise.all([
+        fetchTrips(state.activeVehicleId),
+        fetchPayments(state.activeVehicleId),
+      ]);
+      state.trips = trips;
+      state.payments = payments;
       renderTrips();
       renderSummary();
+      renderBalances();
+      renderPaymentHistory();
     }
 
-    // Refresh home cards
     renderVehicleCards();
-
     closeVehicleModal();
   } catch (err) {
     showToast('Error: ' + err.message, 'error');
@@ -590,7 +834,7 @@ function handleDeleteVehicleClick() {
 
   dom.confirmTitle.textContent = 'Eliminar vehiculo';
   dom.confirmMessage.textContent =
-    `¿Estas seguro de eliminar "${vehicle.name}"? Se eliminaran todos sus viajes.`;
+    `¿Estas seguro de eliminar "${vehicle.name}"? Se eliminaran todos sus viajes y pagos.`;
 
   state.confirmAction = async () => {
     const btn = dom.btnConfirmOk;
@@ -598,6 +842,7 @@ function handleDeleteVehicleClick() {
     try {
       await deleteVehicle(state.activeVehicleId);
       showToast('Vehiculo eliminado');
+      haptic();
       state.vehicles = await fetchVehicles();
       state.activeVehicleId = null;
       toggleHidden(dom.confirmModal, true);
@@ -635,9 +880,89 @@ function handleClearTripsClick() {
     try {
       await deleteTripsForVehicle(state.activeVehicleId);
       showToast('Viajes eliminados');
+      haptic();
       state.trips = [];
       renderTrips();
       renderSummary();
+      renderBalances();
+      toggleHidden(dom.confirmModal, true);
+    } catch (err) {
+      showToast('Error: ' + err.message, 'error');
+    } finally {
+      setButtonLoading(btn, false);
+      if (btnText) btnText.textContent = 'Eliminar';
+    }
+  };
+
+  toggleHidden(dom.confirmModal, false);
+}
+
+// --- Payment Modal ---
+
+function openPaymentModal(driver, balance) {
+  dom.paymentDriver.value = driver;
+  dom.paymentAmount.value = balance > 0 ? balance.toFixed(2) : '';
+  dom.paymentNote.value = '';
+  $('#payment-modal-title').textContent = `Pago de ${driver}`;
+  toggleHidden(dom.paymentModal, false);
+}
+
+function closePaymentModal() {
+  toggleHidden(dom.paymentModal, true);
+}
+
+async function handlePaymentSubmit(e) {
+  e.preventDefault();
+  const btn = dom.btnSubmitPayment;
+  setButtonLoading(btn, true);
+
+  const amount = parseFloat(dom.paymentAmount.value);
+  if (!amount || amount <= 0) {
+    showToast('Ingresa un monto valido', 'error');
+    setButtonLoading(btn, false);
+    return;
+  }
+
+  try {
+    await createPayment({
+      vehicle_id: state.activeVehicleId,
+      driver: dom.paymentDriver.value,
+      amount,
+      note: dom.paymentNote.value.trim() || null,
+    });
+    showToast('Pago registrado');
+    haptic();
+    state.payments = await fetchPayments(state.activeVehicleId);
+    renderBalances();
+    renderPaymentHistory();
+    closePaymentModal();
+  } catch (err) {
+    showToast('Error: ' + err.message, 'error');
+  } finally {
+    setButtonLoading(btn, false);
+  }
+}
+
+// --- Payment Delete ---
+
+function handleDeletePayment(payment) {
+  dom.confirmTitle.textContent = 'Deshacer pago';
+  dom.confirmMessage.textContent =
+    `¿Deshacer el pago de ${formatCurrency(payment.amount)} de ${payment.driver}?`;
+
+  const btnText = dom.btnConfirmOk.querySelector('.btn-text');
+  if (btnText) btnText.textContent = 'Deshacer';
+
+  state.confirmAction = async () => {
+    const btn = dom.btnConfirmOk;
+    setButtonLoading(btn, true);
+    try {
+      await deletePayment(payment.id);
+      showToast('Pago eliminado');
+      haptic();
+      state.payments = await fetchPayments(state.activeVehicleId);
+      renderBalances();
+      renderPaymentHistory();
       toggleHidden(dom.confirmModal, true);
     } catch (err) {
       showToast('Error: ' + err.message, 'error');
@@ -694,11 +1019,13 @@ async function handleTripSubmit(e) {
       cost,
     });
     showToast('Viaje registrado');
+    haptic();
     dom.tripForm.reset();
     dom.costPreviewValue.textContent = '$0,00';
     state.trips = await fetchTrips(state.activeVehicleId);
     renderTrips();
     renderSummary();
+    renderBalances();
   } catch (err) {
     showToast('Error: ' + err.message, 'error');
   } finally {
@@ -712,15 +1039,17 @@ async function handleDeleteTrip(tripId) {
   try {
     await deleteTrip(tripId);
     showToast('Viaje eliminado');
+    haptic();
     state.trips = await fetchTrips(state.activeVehicleId);
     renderTrips();
     renderSummary();
+    renderBalances();
   } catch (err) {
     showToast('Error: ' + err.message, 'error');
   }
 }
 
-// --- Model Change (auto-fill consumption) ---
+// --- Model Change ---
 
 function handleModelChange() {
   const model = dom.vehicleModelSelect.value;
@@ -731,8 +1060,90 @@ function handleModelChange() {
   }
 }
 
+// --- Share / Export ---
+
+function generateSummaryText() {
+  const vehicle = getActiveVehicle();
+  if (!vehicle) return '';
+
+  const drivers = vehicle.drivers || [];
+  const trips = state.trips;
+  const payments = state.payments;
+
+  // Per-driver totals
+  const tripTotals = {};
+  const paymentTotals = {};
+  drivers.forEach((d) => {
+    tripTotals[d] = { cost: 0, trips: 0, km: 0 };
+    paymentTotals[d] = 0;
+  });
+
+  trips.forEach((t) => {
+    if (tripTotals[t.driver]) {
+      tripTotals[t.driver].cost += Number(t.cost);
+      tripTotals[t.driver].trips += 1;
+      tripTotals[t.driver].km += Number(t.km);
+    }
+  });
+
+  payments.forEach((p) => {
+    if (paymentTotals[p.driver] !== undefined) {
+      paymentTotals[p.driver] += Number(p.amount);
+    }
+  });
+
+  let text = `*Naftometro - ${vehicle.name}*\n`;
+  text += `${vehicle.model} | ${vehicle.fuel_type} | ${formatCurrency(vehicle.fuel_price)}/l\n\n`;
+
+  text += `*Resumen de gastos:*\n`;
+  let grandTotal = 0;
+  drivers.forEach((d) => {
+    const data = tripTotals[d];
+    grandTotal += data.cost;
+    text += `- ${d}: ${formatCurrency(data.cost)} (${data.trips} viaje${data.trips !== 1 ? 's' : ''}, ${Number(data.km).toLocaleString('es-AR')} km)\n`;
+  });
+  text += `Total: ${formatCurrency(grandTotal)}\n\n`;
+
+  text += `*Balances:*\n`;
+  drivers.forEach((d) => {
+    const balance = tripTotals[d].cost - paymentTotals[d];
+    text += `- ${d}: ${balance <= 0 ? 'Al dia' : 'Debe ' + formatCurrency(balance)}\n`;
+  });
+
+  return text;
+}
+
+async function handleShare() {
+  const text = generateSummaryText();
+  if (!text) return;
+
+  if (navigator.share) {
+    try {
+      await navigator.share({ text });
+      haptic();
+    } catch (err) {
+      // User cancelled share - that's ok
+      if (err.name !== 'AbortError') {
+        fallbackCopy(text);
+      }
+    }
+  } else {
+    fallbackCopy(text);
+  }
+}
+
+async function fallbackCopy(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    showToast('Resumen copiado al portapapeles');
+    haptic();
+  } catch {
+    showToast('No se pudo copiar', 'error');
+  }
+}
+
 // ============================================================
-// 10. EVENT BINDING & INITIALIZATION
+// 11. EVENT BINDING & INITIALIZATION
 // ============================================================
 
 function bindEvents() {
@@ -741,6 +1152,10 @@ function bindEvents() {
 
   // Back button
   $('#btn-back').addEventListener('click', navigateBack);
+
+  // Share buttons
+  $('#btn-share').addEventListener('click', handleShare);
+  $('#btn-share-balances').addEventListener('click', handleShare);
 
   // Edit vehicle
   $('#btn-edit-vehicle').addEventListener('click', () => {
@@ -754,7 +1169,7 @@ function bindEvents() {
   // Clear trips
   $('#btn-clear-trips').addEventListener('click', handleClearTripsClick);
 
-  // Modal close
+  // Vehicle modal
   $('#btn-close-modal').addEventListener('click', closeVehicleModal);
   dom.vehicleModal.addEventListener('click', (e) => {
     if (e.target === dom.vehicleModal) closeVehicleModal();
@@ -764,6 +1179,13 @@ function bindEvents() {
   dom.vehicleForm.addEventListener('submit', handleVehicleSubmit);
   dom.vehicleModelSelect.addEventListener('change', handleModelChange);
   dom.btnAddDriver.addEventListener('click', () => addDriverInput(''));
+
+  // Payment modal
+  $('#btn-close-payment-modal').addEventListener('click', closePaymentModal);
+  dom.paymentModal.addEventListener('click', (e) => {
+    if (e.target === dom.paymentModal) closePaymentModal();
+  });
+  dom.paymentForm.addEventListener('submit', handlePaymentSubmit);
 
   // Trip form
   dom.tripForm.addEventListener('submit', handleTripSubmit);
@@ -793,8 +1215,14 @@ function bindEvents() {
 }
 
 async function init() {
+  // Register service worker
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/sw.js').catch(() => {});
+  }
+
   populateFormOptions();
   bindEvents();
+  initSwipeGesture();
 
   try {
     state.vehicles = await fetchVehicles();

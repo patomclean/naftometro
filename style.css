@@ -136,6 +136,11 @@ body {
   background: rgba(255, 255, 255, 0.09);
 }
 
+.vehicle-card.last-visited {
+  border-color: rgba(124, 92, 252, 0.3);
+  box-shadow: var(--glass-shadow), 0 0 0 1px rgba(124, 92, 252, 0.15);
+}
+
 .vehicle-card-header {
   display: flex;
   justify-content: space-between;
@@ -723,6 +728,227 @@ h3 {
   }
 }
 
+@keyframes fadeSlideUp {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+@keyframes detailFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* --- Vehicle Card stagger animation --- */
+.vehicle-card {
+  animation: fadeSlideUp 400ms ease both;
+}
+
+/* --- Detail view stagger --- */
+.detail-stagger > * {
+  animation: detailFadeIn 350ms ease both;
+}
+
+/* --- Skeleton Loading --- */
+.skeleton-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.75rem;
+}
+
+.skeleton-card {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  padding: 1.15rem;
+}
+
+.skeleton-line {
+  height: 14px;
+  border-radius: 6px;
+  margin-bottom: 0.5rem;
+  background: linear-gradient(90deg, rgba(255,255,255,0.04) 25%, rgba(255,255,255,0.08) 50%, rgba(255,255,255,0.04) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+}
+
+.skeleton-line.w60 { width: 60%; }
+.skeleton-line.w40 { width: 40%; height: 10px; }
+.skeleton-line.w80 { width: 80%; height: 10px; margin-bottom: 0; }
+
+.skeleton-badges {
+  display: flex;
+  gap: 0.35rem;
+  margin-bottom: 0.65rem;
+}
+
+.skeleton-badge {
+  width: 60px;
+  height: 22px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(255,255,255,0.04) 25%, rgba(255,255,255,0.08) 50%, rgba(255,255,255,0.04) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+}
+
+/* --- Balances --- */
+.balances-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.balance-card {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-md);
+  padding: 1rem;
+  text-align: center;
+}
+
+.balance-card .driver-name {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  margin-bottom: 0.4rem;
+  font-weight: 500;
+}
+
+.balance-card .balance-amount {
+  font-size: 1.3rem;
+  font-weight: 700;
+  margin-bottom: 0.25rem;
+}
+
+.balance-card .balance-amount.debt {
+  color: var(--color-danger);
+}
+
+.balance-card .balance-amount.clear {
+  color: var(--color-success);
+}
+
+.balance-card .balance-detail {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  margin-bottom: 0.6rem;
+}
+
+.balance-card .btn-pay {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.35rem 0.75rem;
+  border: 1px solid var(--color-primary);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-primary);
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition);
+  font-family: var(--font-family);
+  min-height: 36px;
+}
+
+.balance-card .btn-pay:hover {
+  background: var(--color-primary-light);
+}
+
+.badge-clear {
+  display: inline-block;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  background: rgba(34, 197, 94, 0.15);
+  color: var(--color-success);
+}
+
+/* --- Payments History --- */
+.payments-title {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  font-weight: 600;
+  margin: 0;
+}
+
+.payments-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.payment-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.6rem 0.75rem;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  font-size: 0.82rem;
+}
+
+.payment-item .payment-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.payment-item .payment-driver {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.payment-item .payment-meta {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+.payment-item .payment-amount {
+  font-weight: 700;
+  color: var(--color-success);
+  white-space: nowrap;
+}
+
+.empty-state-sm {
+  text-align: center;
+  padding: 0.75rem;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+}
+
+/* --- Trip date group headers --- */
+.trip-date-group {
+  padding: 0.5rem 0.75rem 0.25rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* --- Swipe hint indicator --- */
+.views-container.swiping {
+  transition: none;
+}
+
 /* --- Responsive --- */
 
 /* Mobile (< 480px) */
@@ -750,6 +976,10 @@ h3 {
   }
 
   .summary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .balances-grid {
     grid-template-columns: 1fr;
   }
 
