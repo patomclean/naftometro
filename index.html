@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Naftometro</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+  <div class="app">
+
+    <!-- Header -->
+    <header class="app-header">
+      <h1>Naftometro</h1>
+      <p class="subtitle">Calculadora de nafta entre hermanos</p>
+      <button id="btn-add-vehicle" class="btn btn-primary">+ Agregar vehiculo</button>
+    </header>
+
+    <!-- Vehicle Tabs -->
+    <section class="vehicle-tabs-section">
+      <div id="vehicle-tabs" class="vehicle-tabs"></div>
+      <div id="no-vehicles-msg" class="empty-state">
+        <p>No hay vehiculos cargados. Agrega uno para empezar.</p>
+      </div>
+    </section>
+
+    <!-- Vehicle Detail (hidden when no vehicle selected) -->
+    <section id="vehicle-detail" class="vehicle-detail hidden">
+
+      <!-- Vehicle Info Card -->
+      <div class="glass-card vehicle-info-card">
+        <div class="vehicle-info-header">
+          <h2 id="vehicle-title"></h2>
+          <div class="vehicle-actions">
+            <button id="btn-edit-vehicle" class="btn-icon" title="Editar precio">&#9998;</button>
+            <button id="btn-delete-vehicle" class="btn-icon btn-icon-danger" title="Eliminar vehiculo">&#128465;</button>
+          </div>
+        </div>
+        <div class="vehicle-meta">
+          <span class="badge" id="vehicle-model-badge"></span>
+          <span class="badge" id="vehicle-consumption-badge"></span>
+          <span class="badge" id="vehicle-fuel-type-badge"></span>
+          <span class="badge badge-highlight" id="vehicle-fuel-price-badge"></span>
+          <span class="badge badge-highlight" id="vehicle-cost-km-badge"></span>
+        </div>
+      </div>
+
+      <!-- Trip Form Card -->
+      <div class="glass-card">
+        <h3>Registrar viaje</h3>
+        <form id="trip-form">
+          <div class="form-row">
+            <div class="form-group">
+              <label for="trip-driver">Conductor</label>
+              <select id="trip-driver" required>
+                <option value="">Seleccionar...</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="trip-km">Kilometros</label>
+              <input type="number" id="trip-km" min="0.1" step="0.1" required placeholder="Ej: 25">
+            </div>
+          </div>
+          <div class="form-group">
+            <label for="trip-note">Nota (opcional)</label>
+            <input type="text" id="trip-note" maxlength="100" placeholder="Ej: Ida al trabajo">
+          </div>
+          <div class="cost-preview" id="cost-preview">
+            <span>Costo estimado:</span>
+            <strong id="cost-preview-value">$0,00</strong>
+          </div>
+          <button type="submit" id="btn-submit-trip" class="btn btn-primary btn-block">
+            <span class="btn-text">Registrar viaje</span>
+            <span class="btn-loader hidden"></span>
+          </button>
+        </form>
+      </div>
+
+      <!-- Summary Card -->
+      <div class="glass-card">
+        <div class="section-header">
+          <h3>Resumen de gastos</h3>
+          <button id="btn-clear-trips" class="btn btn-danger btn-sm">Limpiar viajes</button>
+        </div>
+        <div id="summary-grid" class="summary-grid"></div>
+        <div class="summary-total">
+          <span>Total:</span>
+          <strong id="summary-total-value">$0,00</strong>
+        </div>
+      </div>
+
+      <!-- Trip History Card -->
+      <div class="glass-card">
+        <h3>Historial de viajes</h3>
+        <div id="trips-loading" class="loading-spinner hidden">
+          <div class="spinner"></div>
+          <span>Cargando...</span>
+        </div>
+        <div id="trips-empty" class="empty-state hidden">
+          <p>No hay viajes registrados para este vehiculo.</p>
+        </div>
+        <div class="table-wrapper">
+          <table id="trips-table" class="trips-table hidden">
+            <thead>
+              <tr>
+                <th>Fecha</th>
+                <th>Conductor</th>
+                <th>Km</th>
+                <th>Litros</th>
+                <th>Costo</th>
+                <th>Nota</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="trips-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+    </section>
+  </div>
+
+  <!-- Vehicle Modal (Add/Edit) -->
+  <div id="vehicle-modal" class="modal-overlay hidden">
+    <div class="modal glass-card">
+      <div class="modal-header">
+        <h3 id="modal-title">Agregar vehiculo</h3>
+        <button id="btn-close-modal" class="btn-icon">&times;</button>
+      </div>
+      <form id="vehicle-form">
+        <input type="hidden" id="vehicle-form-id">
+        <div class="form-group">
+          <label for="vehicle-name">Nombre personalizado</label>
+          <input type="text" id="vehicle-name" required placeholder="Ej: Gol de papa">
+        </div>
+        <div class="form-group">
+          <label for="vehicle-model">Modelo</label>
+          <select id="vehicle-model" required>
+            <option value="">Seleccionar modelo...</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="vehicle-consumption">Consumo (km/litro)</label>
+          <input type="number" id="vehicle-consumption" min="1" step="0.1" required readonly>
+        </div>
+        <div class="form-group">
+          <label for="vehicle-fuel-type">Tipo de combustible</label>
+          <select id="vehicle-fuel-type" required>
+            <option value="">Seleccionar...</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="vehicle-fuel-price">Precio del litro ($)</label>
+          <input type="number" id="vehicle-fuel-price" min="1" step="1" required placeholder="Ej: 1200">
+        </div>
+        <button type="submit" id="btn-submit-vehicle" class="btn btn-primary btn-block">
+          <span class="btn-text">Guardar</span>
+          <span class="btn-loader hidden"></span>
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Confirm Modal -->
+  <div id="confirm-modal" class="modal-overlay hidden">
+    <div class="modal glass-card modal-sm">
+      <h3 id="confirm-title">Confirmar</h3>
+      <p id="confirm-message"></p>
+      <div class="modal-actions">
+        <button id="btn-confirm-cancel" class="btn btn-secondary">Cancelar</button>
+        <button id="btn-confirm-ok" class="btn btn-danger">
+          <span class="btn-text">Eliminar</span>
+          <span class="btn-loader hidden"></span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Container -->
+  <div id="toast-container" class="toast-container"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
