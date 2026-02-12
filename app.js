@@ -16,6 +16,7 @@ const VEHICLE_MODELS = {
   'Ford Ranger 3.2 TD': 8.0,
   'VW Amarok 2.0 TD': 9.0,
   'Peugeot 208 1.6': 13.5,
+  'VW Taos 1.4 250 TSI': 12.0,
 };
 
 const FUEL_TYPES = [
@@ -24,8 +25,6 @@ const FUEL_TYPES = [
   'Diesel / Gasoil',
   'Infinia / V-Power',
 ];
-
-const DRIVERS = ['Pato', 'Hermano 1', 'Hermano 2'];
 
 // ============================================================
 // 2. SUPABASE INITIALIZATION
@@ -80,6 +79,8 @@ const dom = {
   vehicleConsumptionInput: $('#vehicle-consumption'),
   vehicleFuelTypeSelect: $('#vehicle-fuel-type'),
   vehicleFuelPriceInput: $('#vehicle-fuel-price'),
+  driversContainer: $('#drivers-container'),
+  btnAddDriver: $('#btn-add-driver'),
   btnSubmitVehicle: $('#btn-submit-vehicle'),
   confirmModal: $('#confirm-modal'),
   confirmTitle: $('#confirm-title'),
@@ -275,6 +276,19 @@ function renderVehicleDetail() {
 
   const costPerKm = vehicle.fuel_price / vehicle.consumption;
   dom.vehicleCostKmBadge.textContent = formatCurrency(costPerKm) + '/km';
+
+  // Update trip driver select with this vehicle's drivers
+  renderDriverSelect(vehicle.drivers || []);
+}
+
+function renderDriverSelect(drivers) {
+  dom.tripDriver.innerHTML = '<option value="">Seleccionar...</option>';
+  drivers.forEach((name) => {
+    const opt = document.createElement('option');
+    opt.value = name;
+    opt.textContent = name;
+    dom.tripDriver.appendChild(opt);
+  });
 }
 
 function renderTrips() {
@@ -317,10 +331,12 @@ function renderTrips() {
 }
 
 function renderSummary() {
+  const vehicle = getActiveVehicle();
+  const drivers = vehicle ? (vehicle.drivers || []) : [];
   const trips = state.trips;
   const totals = {};
 
-  DRIVERS.forEach((d) => {
+  drivers.forEach((d) => {
     totals[d] = { km: 0, cost: 0, trips: 0 };
   });
 
@@ -336,7 +352,7 @@ function renderSummary() {
 
   let grandTotal = 0;
 
-  DRIVERS.forEach((driver) => {
+  drivers.forEach((driver) => {
     const data = totals[driver];
     grandTotal += data.cost;
 
@@ -369,14 +385,31 @@ function populateFormOptions() {
     opt.textContent = type;
     dom.vehicleFuelTypeSelect.appendChild(opt);
   });
+}
 
-  // Populate driver select
-  DRIVERS.forEach((driver) => {
-    const opt = document.createElement('option');
-    opt.value = driver;
-    opt.textContent = driver;
-    dom.tripDriver.appendChild(opt);
+// --- Dynamic driver inputs in vehicle modal ---
+
+function addDriverInput(name) {
+  const row = document.createElement('div');
+  row.className = 'driver-input-row';
+  row.innerHTML = `
+    <input type="text" class="driver-name-input" placeholder="Nombre" required value="${name || ''}">
+    <button type="button" class="btn-icon btn-icon-danger btn-remove-driver" title="Quitar">&times;</button>
+  `;
+  row.querySelector('.btn-remove-driver').addEventListener('click', () => {
+    row.remove();
   });
+  dom.driversContainer.appendChild(row);
+}
+
+function getDriverNames() {
+  const inputs = dom.driversContainer.querySelectorAll('.driver-name-input');
+  const names = [];
+  inputs.forEach((input) => {
+    const val = input.value.trim();
+    if (val) names.push(val);
+  });
+  return names;
 }
 
 // ============================================================
@@ -410,6 +443,7 @@ function openVehicleModal(mode, vehicleData) {
   dom.modalTitle.textContent = mode === 'edit' ? 'Editar vehiculo' : 'Agregar vehiculo';
   dom.vehicleForm.reset();
   dom.vehicleConsumptionInput.readOnly = true;
+  dom.driversContainer.innerHTML = '';
 
   if (mode === 'edit' && vehicleData) {
     dom.vehicleFormId.value = vehicleData.id;
@@ -418,8 +452,13 @@ function openVehicleModal(mode, vehicleData) {
     dom.vehicleConsumptionInput.value = vehicleData.consumption;
     dom.vehicleFuelTypeSelect.value = vehicleData.fuel_type;
     dom.vehicleFuelPriceInput.value = vehicleData.fuel_price;
+    // Load existing drivers
+    (vehicleData.drivers || []).forEach((name) => addDriverInput(name));
   } else {
     dom.vehicleFormId.value = '';
+    // Start with 2 empty driver inputs
+    addDriverInput('');
+    addDriverInput('');
   }
 
   toggleHidden(dom.vehicleModal, false);
@@ -434,12 +473,20 @@ async function handleVehicleSubmit(e) {
   const btn = dom.btnSubmitVehicle;
   setButtonLoading(btn, true);
 
+  const drivers = getDriverNames();
+  if (drivers.length === 0) {
+    showToast('Agrega al menos una persona', 'error');
+    setButtonLoading(btn, false);
+    return;
+  }
+
   const payload = {
     name: dom.vehicleNameInput.value.trim(),
     model: dom.vehicleModelSelect.value,
     consumption: parseFloat(dom.vehicleConsumptionInput.value),
     fuel_type: dom.vehicleFuelTypeSelect.value,
     fuel_price: parseFloat(dom.vehicleFuelPriceInput.value),
+    drivers,
   };
 
   try {
@@ -669,6 +716,7 @@ function bindEvents() {
   // Vehicle form
   dom.vehicleForm.addEventListener('submit', handleVehicleSubmit);
   dom.vehicleModelSelect.addEventListener('change', handleModelChange);
+  dom.btnAddDriver.addEventListener('click', () => addDriverInput(''));
 
   // Trip form
   dom.tripForm.addEventListener('submit', handleTripSubmit);

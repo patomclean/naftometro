@@ -240,6 +240,29 @@ select option {
   color: var(--text-primary);
 }
 
+/* --- Drivers Container (vehicle modal) --- */
+.drivers-container {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.driver-input-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.driver-input-row input {
+  flex: 1;
+}
+
+.driver-input-row .btn-remove-driver {
+  flex-shrink: 0;
+  font-size: 1.1rem;
+}
+
 /* --- Cost Preview --- */
 .cost-preview {
   display: flex;

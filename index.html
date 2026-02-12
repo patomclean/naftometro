@@ -154,6 +154,11 @@
           <label for="vehicle-fuel-price">Precio del litro ($)</label>
           <input type="number" id="vehicle-fuel-price" min="1" step="1" required placeholder="Ej: 1200">
         </div>
+        <div class="form-group">
+          <label>Personas que usan este vehiculo</label>
+          <div id="drivers-container" class="drivers-container"></div>
+          <button type="button" id="btn-add-driver" class="btn btn-secondary btn-sm">+ Agregar persona</button>
+        </div>
         <button type="submit" id="btn-submit-vehicle" class="btn btn-primary btn-block">
           <span class="btn-text">Guardar</span>
           <span class="btn-loader hidden"></span>
