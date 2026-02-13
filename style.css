@@ -32,11 +32,12 @@
 
   --font-family: -apple-system, 'Segoe UI', system-ui, sans-serif;
 
-  /* Safe area insets for iPhone notch/home indicator */
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   --safe-left: env(safe-area-inset-left, 0px);
   --safe-right: env(safe-area-inset-right, 0px);
+
+  --nav-height: 60px;
 }
 
 /* --- Reset --- */
@@ -59,21 +60,31 @@ body {
   overscroll-behavior: none;
 }
 
-/* --- Views Container (horizontal slide navigation) --- */
+/* --- Views Container (3-view horizontal slide) --- */
 .views-container {
   display: flex;
-  width: 200%;
+  width: 300%;
   transition: transform 350ms cubic-bezier(0.4, 0, 0.2, 1);
   min-height: 100vh;
   min-height: 100dvh;
+  /* Default: show center view (Home) */
+  transform: translateX(-33.333%);
 }
 
 .views-container.show-detail {
-  transform: translateX(-50%);
+  transform: translateX(0);
+}
+
+.views-container.show-dashboard {
+  transform: translateX(-66.666%);
+}
+
+.views-container.swiping {
+  transition: none;
 }
 
 .view {
-  width: 50%;
+  width: 33.333%;
   min-height: 100vh;
   min-height: 100dvh;
   overflow-y: auto;
@@ -84,9 +95,69 @@ body {
   margin: 0 auto;
   padding: 1rem;
   padding-top: calc(1rem + var(--safe-top));
-  padding-bottom: calc(1rem + var(--safe-bottom));
+  padding-bottom: calc(var(--nav-height) + var(--safe-bottom) + 1.5rem);
   padding-left: calc(1rem + var(--safe-left));
   padding-right: calc(1rem + var(--safe-right));
+}
+
+/* --- Bottom Navigation Bar --- */
+.bottom-nav {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: calc(var(--nav-height) + var(--safe-bottom));
+  padding-bottom: var(--safe-bottom);
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  background: rgba(15, 12, 41, 0.92);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  z-index: 500;
+}
+
+.nav-tab {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.2rem;
+  padding: 0.4rem 1.5rem;
+  min-height: 44px;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all var(--transition);
+  -webkit-tap-highlight-color: transparent;
+  font-family: var(--font-family);
+}
+
+.nav-tab .nav-icon {
+  width: 24px;
+  height: 24px;
+  transition: all var(--transition);
+}
+
+.nav-tab .nav-label {
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  transition: all var(--transition);
+}
+
+.nav-tab.active {
+  color: var(--color-primary);
+}
+
+.nav-tab.active .nav-icon {
+  transform: scale(1.1);
+}
+
+.nav-tab:active {
+  transform: scale(0.92);
 }
 
 /* --- Detail Header --- */
@@ -106,9 +177,20 @@ body {
   text-overflow: ellipsis;
 }
 
-.btn-back {
-  font-size: 1.4rem;
-  font-weight: 700;
+/* --- Detail Empty State --- */
+.detail-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 60vh;
+  text-align: center;
+  color: var(--text-muted);
+  gap: 1rem;
+}
+
+.detail-empty-icon {
+  font-size: 3rem;
 }
 
 /* --- Vehicle Cards Grid (Home) --- */
@@ -129,6 +211,7 @@ body {
   cursor: pointer;
   transition: all var(--transition);
   -webkit-tap-highlight-color: transparent;
+  animation: fadeSlideUp 400ms ease both;
 }
 
 .vehicle-card:active {
@@ -220,14 +303,25 @@ body {
   margin-bottom: 1.25rem;
 }
 
-/* --- Vehicle Detail (view-detail content spacing) --- */
-#view-detail .view-content {
-  display: grid;
-  gap: 1rem;
+/* --- Dashboard Header --- */
+.dashboard-header {
+  padding: 1.5rem 0 1.25rem;
 }
 
-#view-detail .view-content > .detail-header {
-  margin-bottom: 0;
+.dashboard-header h1 {
+  font-size: 1.8rem;
+  font-weight: 800;
+  background: linear-gradient(135deg, var(--color-primary), #a78bfa);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  margin-bottom: 0.75rem;
+}
+
+/* --- Vehicle Detail (view-detail content spacing) --- */
+#detail-content {
+  display: grid;
+  gap: 1rem;
 }
 
 .vehicle-actions {
@@ -241,6 +335,192 @@ body {
   flex-wrap: wrap;
   gap: 0.5rem;
   margin-top: 0.75rem;
+}
+
+/* --- Dashboard Stats --- */
+.stats-row {
+  display: flex;
+  justify-content: space-around;
+  gap: 0.5rem;
+}
+
+.stat-item {
+  text-align: center;
+  flex: 1;
+}
+
+.stat-value {
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: var(--color-primary);
+  margin-bottom: 0.15rem;
+}
+
+.stat-label {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.monthly-compare {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.month-card {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-md);
+  padding: 0.85rem;
+  text-align: center;
+}
+
+.month-label {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  margin-bottom: 0.3rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.month-value {
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.month-variation {
+  text-align: center;
+  font-size: 0.82rem;
+  font-weight: 600;
+  padding: 0.4rem;
+  border-radius: var(--radius-sm);
+}
+
+.month-variation.up {
+  color: var(--color-danger);
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.month-variation.down {
+  color: var(--color-success);
+  background: rgba(34, 197, 94, 0.1);
+}
+
+.month-variation.neutral {
+  color: var(--text-muted);
+}
+
+/* --- Vehicle Breakdown (Dashboard) --- */
+.vehicle-breakdown-item {
+  padding: 0.65rem 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.vehicle-breakdown-item:last-child {
+  border-bottom: none;
+}
+
+.breakdown-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.25rem;
+}
+
+.breakdown-name {
+  font-size: 0.88rem;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.breakdown-value {
+  font-weight: 700;
+  color: var(--color-primary);
+  font-size: 0.95rem;
+  white-space: nowrap;
+}
+
+.breakdown-meta {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  margin-top: 0.25rem;
+}
+
+.progress-bar {
+  width: 100%;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 2px;
+  margin-top: 0.35rem;
+  overflow: hidden;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  background: var(--color-primary);
+  border-radius: 2px;
+  transition: width 500ms ease;
+}
+
+/* --- Activity Item (Dashboard) --- */
+.activity-item {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.55rem 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  font-size: 0.82rem;
+}
+
+.activity-item:last-child {
+  border-bottom: none;
+}
+
+.activity-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-primary);
+  flex-shrink: 0;
+}
+
+.activity-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.activity-main {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.activity-meta {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
+.activity-cost {
+  font-weight: 700;
+  color: var(--color-primary);
+  white-space: nowrap;
+}
+
+/* --- Dashboard spacing --- */
+#view-dashboard .view-content {
+  display: grid;
+  gap: 1rem;
+}
+
+#view-dashboard .view-content > .dashboard-header {
+  margin-bottom: 0;
 }
 
 /* --- Badges --- */
@@ -288,12 +568,10 @@ select {
   border-radius: var(--radius-sm);
   background: rgba(0, 0, 0, 0.3);
   color: var(--text-primary);
-  /* 16px minimum prevents iOS auto-zoom on focus */
   font-size: 16px;
   font-family: var(--font-family);
   transition: border-color var(--transition);
   outline: none;
-  /* Remove iOS inner shadow */
   -webkit-appearance: none;
   appearance: none;
 }
@@ -651,7 +929,7 @@ select option {
 /* --- Toast --- */
 .toast-container {
   position: fixed;
-  bottom: calc(1.5rem + var(--safe-bottom));
+  bottom: calc(var(--nav-height) + var(--safe-bottom) + 0.75rem);
   right: 1.5rem;
   left: 1.5rem;
   z-index: 2000;
@@ -689,6 +967,12 @@ select option {
   display: none !important;
 }
 
+.text-muted {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  text-align: center;
+}
+
 h3 {
   font-size: 1.05rem;
   margin-bottom: 1rem;
@@ -700,43 +984,22 @@ h3 {
 }
 
 @keyframes slideUp {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 @keyframes slideUpModal {
-  from {
-    opacity: 0;
-    transform: translateY(100%);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  from { opacity: 0; transform: translateY(100%); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 @keyframes fadeOut {
-  to {
-    opacity: 0;
-    transform: translateY(-10px);
-  }
+  to { opacity: 0; transform: translateY(-10px); }
 }
 
 @keyframes fadeSlideUp {
-  from {
-    opacity: 0;
-    transform: translateY(16px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 @keyframes shimmer {
@@ -745,19 +1008,8 @@ h3 {
 }
 
 @keyframes detailFadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(12px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-/* --- Vehicle Card stagger animation --- */
-.vehicle-card {
-  animation: fadeSlideUp 400ms ease both;
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 /* --- Detail view stagger --- */
@@ -836,13 +1088,8 @@ h3 {
   margin-bottom: 0.25rem;
 }
 
-.balance-card .balance-amount.debt {
-  color: var(--color-danger);
-}
-
-.balance-card .balance-amount.clear {
-  color: var(--color-success);
-}
+.balance-card .balance-amount.debt { color: var(--color-danger); }
+.balance-card .balance-amount.clear { color: var(--color-success); }
 
 .balance-card .balance-detail {
   font-size: 0.72rem;
@@ -867,9 +1114,7 @@ h3 {
   min-height: 36px;
 }
 
-.balance-card .btn-pay:hover {
-  background: var(--color-primary-light);
-}
+.balance-card .btn-pay:hover { background: var(--color-primary-light); }
 
 .badge-clear {
   display: inline-block;
@@ -906,26 +1151,10 @@ h3 {
   font-size: 0.82rem;
 }
 
-.payment-item .payment-info {
-  flex: 1;
-  min-width: 0;
-}
-
-.payment-item .payment-driver {
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.payment-item .payment-meta {
-  font-size: 0.72rem;
-  color: var(--text-muted);
-}
-
-.payment-item .payment-amount {
-  font-weight: 700;
-  color: var(--color-success);
-  white-space: nowrap;
-}
+.payment-item .payment-info { flex: 1; min-width: 0; }
+.payment-item .payment-driver { font-weight: 600; color: var(--text-primary); }
+.payment-item .payment-meta { font-size: 0.72rem; color: var(--text-muted); }
+.payment-item .payment-amount { font-weight: 700; color: var(--color-success); white-space: nowrap; }
 
 .empty-state-sm {
   text-align: center;
@@ -944,11 +1173,6 @@ h3 {
   letter-spacing: 0.05em;
 }
 
-/* --- Swipe hint indicator --- */
-.views-container.swiping {
-  transition: none;
-}
-
 /* --- Responsive --- */
 
 /* Mobile (< 480px) */
@@ -964,6 +1188,10 @@ h3 {
   .app-header .subtitle {
     font-size: 0.85rem;
     margin-bottom: 1rem;
+  }
+
+  .dashboard-header h1 {
+    font-size: 1.5rem;
   }
 
   .glass-card {
@@ -993,6 +1221,10 @@ h3 {
 
   .toast {
     max-width: none;
+  }
+
+  .stat-value {
+    font-size: 1.1rem;
   }
 
   /* Card-style trip history for mobile */
@@ -1043,10 +1275,6 @@ h3 {
 
 /* Tablet+ */
 @media (min-width: 768px) {
-  .app {
-    padding: 2rem;
-  }
-
   .app-header {
     padding: 3rem 0 2rem;
   }

@@ -3,7 +3,7 @@
 // ============================================================
 
 const SUPABASE_URL = 'https://vablrtbwxitoiqyzyama.supabase.co';
-const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZhYmxydGJ3eGl0b2lxeXp5YW1hIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA4NTkyOTAsImV4cCI6MjA4NjQzNTI5MH0.IK2tbR_QIwYDaBmYy1WPNai5o5BHGq_f8K6FQOft_ww';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZhYmxydGJ3eGl0b2lxeXp5YW1hIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA4NTkyOTAsImV4cCI6MjA4NjQzNTI5MH0.IK2tbR_QIwYDaBmYy1WPNai5o5BHGq_f8K2FQOft_ww';
 
 const VEHICLE_MODELS = {
   'VW Gol Trend 1.6': 12.5,
@@ -26,6 +26,8 @@ const FUEL_TYPES = [
   'Infinia / V-Power',
 ];
 
+const TABS = ['detail', 'home', 'dashboard'];
+
 // ============================================================
 // 2. SUPABASE INITIALIZATION
 // ============================================================
@@ -43,6 +45,10 @@ const state = {
   payments: [],
   confirmAction: null,
   lastVisitedVehicleId: null,
+  currentTab: 'home',
+  dashboardLoaded: false,
+  allTrips: [],
+  allPayments: [],
 };
 
 // ============================================================
@@ -55,6 +61,9 @@ const dom = {
   vehiclesGrid: $('#vehicles-grid'),
   noVehiclesMsg: $('#no-vehicles-msg'),
   homeLoading: $('#home-loading'),
+  // Detail
+  detailEmpty: $('#detail-empty'),
+  detailContent: $('#detail-content'),
   detailTitle: $('#detail-title'),
   vehicleModelBadge: $('#vehicle-model-badge'),
   vehicleConsumptionBadge: $('#vehicle-consumption-badge'),
@@ -76,6 +85,7 @@ const dom = {
   tripsEmpty: $('#trips-empty'),
   tripsTable: $('#trips-table'),
   tripsTbody: $('#trips-tbody'),
+  // Modals
   vehicleModal: $('#vehicle-modal'),
   modalTitle: $('#modal-title'),
   vehicleForm: $('#vehicle-form'),
@@ -99,6 +109,22 @@ const dom = {
   confirmMessage: $('#confirm-message'),
   btnConfirmOk: $('#btn-confirm-ok'),
   toastContainer: $('#toast-container'),
+  // Bottom Nav
+  bottomNav: $('#bottom-nav'),
+  // Dashboard
+  dashboardFilter: $('#dashboard-filter'),
+  dashTotalSpent: $('#dash-total-spent'),
+  dashTotalTrips: $('#dash-total-trips'),
+  dashTotalKm: $('#dash-total-km'),
+  dashCurrentMonth: $('#dash-current-month'),
+  dashCurrentMonthLabel: $('#dash-current-month-label'),
+  dashPrevMonth: $('#dash-prev-month'),
+  dashPrevMonthLabel: $('#dash-prev-month-label'),
+  dashVariation: $('#dash-variation'),
+  dashPerVehicleCard: $('#dash-per-vehicle-card'),
+  dashVehicleBreakdown: $('#dash-vehicle-breakdown'),
+  dashRecentActivity: $('#dash-recent-activity'),
+  dashNoActivity: $('#dash-no-activity'),
 };
 
 // ============================================================
@@ -112,10 +138,21 @@ function formatCurrency(n) {
   });
 }
 
+function formatCurrencyShort(n) {
+  if (n >= 1000000) return '$' + (n / 1000000).toFixed(1) + 'M';
+  if (n >= 10000) return '$' + (n / 1000).toFixed(1) + 'k';
+  return formatCurrency(n);
+}
+
 function formatDate(isoString) {
   const d = new Date(isoString);
   return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit' }) +
     ' ' + d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+}
+
+function formatDateShort(isoString) {
+  const d = new Date(isoString);
+  return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' });
 }
 
 function getDateGroup(isoString) {
@@ -129,6 +166,10 @@ function getDateGroup(isoString) {
   if (diffDays === 1) return 'Ayer';
   if (diffDays <= 7) return 'Esta semana';
   return 'Anteriores';
+}
+
+function getMonthName(date) {
+  return date.toLocaleDateString('es-AR', { month: 'long' });
 }
 
 function calculateCost(km, consumption, fuelPrice) {
@@ -169,81 +210,85 @@ function getActiveVehicle() {
 }
 
 // ============================================================
-// 6. NAVIGATION
+// 6. NAVIGATION (3 views)
 // ============================================================
 
-function navigateTo(view) {
-  if (view === 'detail') {
+function navigateTo(tab) {
+  state.currentTab = tab;
+  dom.viewsContainer.classList.remove('show-detail', 'show-dashboard');
+
+  if (tab === 'detail') {
     dom.viewsContainer.classList.add('show-detail');
-  } else {
-    dom.viewsContainer.classList.remove('show-detail');
-    $('#view-home').scrollTop = 0;
+  } else if (tab === 'dashboard') {
+    dom.viewsContainer.classList.add('show-dashboard');
+    if (!state.dashboardLoaded) {
+      loadDashboard();
+    }
   }
+
+  updateActiveTab(tab);
 }
 
-function navigateBack() {
-  navigateTo('home');
-  renderVehicleCards();
+function updateActiveTab(tab) {
+  dom.bottomNav.querySelectorAll('.nav-tab').forEach((btn) => {
+    btn.classList.toggle('active', btn.dataset.tab === tab);
+  });
 }
 
 // ============================================================
-// 7. SWIPE GESTURE
+// 7. SWIPE GESTURE (3 views)
 // ============================================================
 
 function initSwipeGesture() {
-  const detailView = $('#view-detail');
+  const container = dom.viewsContainer;
   let startX = 0;
   let startY = 0;
   let tracking = false;
   let swiping = false;
 
-  detailView.addEventListener('touchstart', (e) => {
+  container.addEventListener('touchstart', (e) => {
     const touch = e.touches[0];
-    // Only start tracking if touch begins near left edge (first 40px)
-    // or anywhere for broader swipe
     startX = touch.clientX;
     startY = touch.clientY;
     tracking = true;
     swiping = false;
   }, { passive: true });
 
-  detailView.addEventListener('touchmove', (e) => {
+  container.addEventListener('touchmove', (e) => {
     if (!tracking) return;
     const touch = e.touches[0];
     const deltaX = touch.clientX - startX;
     const deltaY = Math.abs(touch.clientY - startY);
 
-    // If vertical scroll dominates, stop tracking
     if (deltaY > 50 && !swiping) {
       tracking = false;
       return;
     }
 
-    // Only activate swipe if moving right with enough horizontal distance
-    if (deltaX > 20 && deltaY < 50) {
+    if (Math.abs(deltaX) > 20 && deltaY < 50) {
       swiping = true;
-      dom.viewsContainer.classList.add('swiping');
-      // Map deltaX to translateX. Detail view starts at -50%, so we offset
-      const percent = Math.min(deltaX / window.innerWidth * 50, 50);
-      dom.viewsContainer.style.transform = `translateX(${-50 + percent}%)`;
     }
   }, { passive: true });
 
-  detailView.addEventListener('touchend', (e) => {
+  container.addEventListener('touchend', (e) => {
     if (!swiping) {
       tracking = false;
       return;
     }
 
-    dom.viewsContainer.classList.remove('swiping');
-    dom.viewsContainer.style.transform = '';
-
     const touch = e.changedTouches[0];
     const deltaX = touch.clientX - startX;
+    const threshold = Math.min(80, window.innerWidth * 0.25);
 
-    // If swiped more than 80px or 25% of screen, go back
-    if (deltaX > 80 || deltaX > window.innerWidth * 0.25) {
-      navigateBack();
+    const currentIndex = TABS.indexOf(state.currentTab);
+
+    if (deltaX > threshold && currentIndex > 0) {
+      // Swipe right → go to previous tab
+      navigateTo(TABS[currentIndex - 1]);
+      haptic();
+    } else if (deltaX < -threshold && currentIndex < TABS.length - 1) {
+      // Swipe left → go to next tab
+      navigateTo(TABS[currentIndex + 1]);
       haptic();
     }
 
@@ -392,6 +437,26 @@ async function deletePayment(id) {
   if (error) throw error;
 }
 
+// --- Dashboard Data ---
+
+async function fetchAllTrips() {
+  const { data, error } = await db
+    .from('trips')
+    .select('*')
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return data;
+}
+
+async function fetchAllPayments() {
+  const { data, error } = await db
+    .from('payments')
+    .select('*')
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return data;
+}
+
 // ============================================================
 // 9. UI RENDERING FUNCTIONS
 // ============================================================
@@ -445,7 +510,14 @@ async function renderVehicleCards() {
 
 function renderVehicleDetail() {
   const vehicle = getActiveVehicle();
-  if (!vehicle) return;
+  if (!vehicle) {
+    toggleHidden(dom.detailEmpty, false);
+    toggleHidden(dom.detailContent, true);
+    return;
+  }
+
+  toggleHidden(dom.detailEmpty, true);
+  toggleHidden(dom.detailContent, false);
 
   dom.detailTitle.textContent = vehicle.name;
   dom.vehicleModelBadge.textContent = vehicle.model;
@@ -458,10 +530,10 @@ function renderVehicleDetail() {
 
   renderDriverSelect(vehicle.drivers || []);
 
-  // Apply stagger animation to detail elements
-  const detailContent = $('#view-detail .view-content');
+  // Apply stagger animation to detail content children
+  const detailContent = dom.detailContent;
   detailContent.classList.remove('detail-stagger');
-  void detailContent.offsetWidth; // force reflow
+  void detailContent.offsetWidth;
   detailContent.classList.add('detail-stagger');
   Array.from(detailContent.children).forEach((child, i) => {
     child.style.animationDelay = (i * 50) + 'ms';
@@ -497,7 +569,6 @@ function renderTrips() {
   let currentGroup = '';
 
   trips.forEach((trip) => {
-    // Date grouping
     const group = getDateGroup(trip.created_at);
     if (group !== currentGroup) {
       currentGroup = group;
@@ -571,7 +642,6 @@ function renderBalances() {
   const trips = state.trips;
   const payments = state.payments;
 
-  // Calculate totals per driver
   const tripTotals = {};
   const paymentTotals = {};
   drivers.forEach((d) => {
@@ -611,7 +681,6 @@ function renderBalances() {
       }
     `;
 
-    // Bind pay button
     const payBtn = card.querySelector('.btn-pay');
     if (payBtn) {
       payBtn.addEventListener('click', () => openPaymentModal(driver, balance));
@@ -697,7 +766,172 @@ function getDriverNames() {
 }
 
 // ============================================================
-// 10. EVENT HANDLERS
+// 10. DASHBOARD
+// ============================================================
+
+async function loadDashboard() {
+  try {
+    const [allTrips, allPayments] = await Promise.all([
+      fetchAllTrips(),
+      fetchAllPayments(),
+    ]);
+    state.allTrips = allTrips;
+    state.allPayments = allPayments;
+    state.dashboardLoaded = true;
+    populateDashboardFilter();
+    renderDashboard();
+  } catch (err) {
+    showToast('Error al cargar dashboard: ' + err.message, 'error');
+  }
+}
+
+function populateDashboardFilter() {
+  const select = dom.dashboardFilter;
+  // Keep "all" option, remove others
+  while (select.options.length > 1) {
+    select.remove(1);
+  }
+  state.vehicles.forEach((v) => {
+    const opt = document.createElement('option');
+    opt.value = v.id;
+    opt.textContent = v.name;
+    select.appendChild(opt);
+  });
+}
+
+function renderDashboard() {
+  const filterValue = dom.dashboardFilter.value;
+  const filterVehicleId = filterValue === 'all' ? null : parseInt(filterValue);
+
+  const trips = filterVehicleId
+    ? state.allTrips.filter((t) => t.vehicle_id === filterVehicleId)
+    : state.allTrips;
+
+  // --- General Stats ---
+  let totalSpent = 0;
+  let totalKm = 0;
+  trips.forEach((t) => {
+    totalSpent += Number(t.cost);
+    totalKm += Number(t.km);
+  });
+
+  dom.dashTotalSpent.textContent = formatCurrencyShort(totalSpent);
+  dom.dashTotalTrips.textContent = trips.length;
+  dom.dashTotalKm.textContent = totalKm.toLocaleString('es-AR', { maximumFractionDigits: 0 });
+
+  // --- Monthly Comparison ---
+  const now = new Date();
+  const currentMonth = now.getMonth();
+  const currentYear = now.getFullYear();
+  const prevMonth = currentMonth === 0 ? 11 : currentMonth - 1;
+  const prevYear = currentMonth === 0 ? currentYear - 1 : currentYear;
+
+  let currentMonthTotal = 0;
+  let prevMonthTotal = 0;
+
+  trips.forEach((t) => {
+    const d = new Date(t.created_at);
+    if (d.getMonth() === currentMonth && d.getFullYear() === currentYear) {
+      currentMonthTotal += Number(t.cost);
+    } else if (d.getMonth() === prevMonth && d.getFullYear() === prevYear) {
+      prevMonthTotal += Number(t.cost);
+    }
+  });
+
+  const currentMonthDate = new Date(currentYear, currentMonth, 1);
+  const prevMonthDate = new Date(prevYear, prevMonth, 1);
+
+  dom.dashCurrentMonthLabel.textContent = getMonthName(currentMonthDate).charAt(0).toUpperCase() + getMonthName(currentMonthDate).slice(1);
+  dom.dashPrevMonthLabel.textContent = getMonthName(prevMonthDate).charAt(0).toUpperCase() + getMonthName(prevMonthDate).slice(1);
+  dom.dashCurrentMonth.textContent = formatCurrency(currentMonthTotal);
+  dom.dashPrevMonth.textContent = formatCurrency(prevMonthTotal);
+
+  // Variation
+  if (prevMonthTotal > 0) {
+    const variation = ((currentMonthTotal - prevMonthTotal) / prevMonthTotal) * 100;
+    const sign = variation >= 0 ? '+' : '';
+    const className = variation > 0 ? 'up' : variation < 0 ? 'down' : 'neutral';
+    const arrow = variation > 0 ? '&#9650;' : variation < 0 ? '&#9660;' : '&#8211;';
+    dom.dashVariation.innerHTML = `<span class="month-variation ${className}">${arrow} ${sign}${variation.toFixed(1)}% vs mes anterior</span>`;
+  } else if (currentMonthTotal > 0) {
+    dom.dashVariation.innerHTML = '<span class="month-variation neutral">Sin datos del mes anterior</span>';
+  } else {
+    dom.dashVariation.innerHTML = '';
+  }
+
+  // --- Per Vehicle Breakdown ---
+  toggleHidden(dom.dashPerVehicleCard, !!filterVehicleId);
+
+  if (!filterVehicleId) {
+    const vehicleTotals = {};
+    state.vehicles.forEach((v) => {
+      vehicleTotals[v.id] = { name: v.name, spent: 0, trips: 0 };
+    });
+
+    state.allTrips.forEach((t) => {
+      if (vehicleTotals[t.vehicle_id]) {
+        vehicleTotals[t.vehicle_id].spent += Number(t.cost);
+        vehicleTotals[t.vehicle_id].trips += 1;
+      }
+    });
+
+    const entries = Object.values(vehicleTotals).filter((v) => v.trips > 0);
+    const maxSpent = Math.max(...entries.map((v) => v.spent), 1);
+
+    dom.dashVehicleBreakdown.innerHTML = '';
+    entries.sort((a, b) => b.spent - a.spent).forEach((v) => {
+      const pct = (v.spent / maxSpent) * 100;
+      const item = document.createElement('div');
+      item.className = 'vehicle-breakdown-item';
+      item.innerHTML = `
+        <div class="breakdown-header">
+          <span class="breakdown-name">${v.name}</span>
+          <span class="breakdown-value">${formatCurrency(v.spent)}</span>
+        </div>
+        <div class="progress-bar">
+          <div class="progress-bar-fill" style="width: ${pct}%"></div>
+        </div>
+        <div class="breakdown-meta">${v.trips} viaje${v.trips !== 1 ? 's' : ''}</div>
+      `;
+      dom.dashVehicleBreakdown.appendChild(item);
+    });
+
+    if (entries.length === 0) {
+      dom.dashVehicleBreakdown.innerHTML = '<p class="text-muted">Sin datos</p>';
+    }
+  }
+
+  // --- Recent Activity ---
+  const recentTrips = trips.slice(0, 5);
+
+  if (recentTrips.length === 0) {
+    dom.dashRecentActivity.innerHTML = '';
+    toggleHidden(dom.dashNoActivity, false);
+  } else {
+    toggleHidden(dom.dashNoActivity, true);
+    dom.dashRecentActivity.innerHTML = '';
+
+    recentTrips.forEach((t) => {
+      const vehicle = state.vehicles.find((v) => v.id === t.vehicle_id);
+      const vehicleName = vehicle ? vehicle.name : 'Vehiculo';
+
+      const item = document.createElement('div');
+      item.className = 'activity-item';
+      item.innerHTML = `
+        <div class="activity-dot"></div>
+        <div class="activity-info">
+          <div class="activity-main">${t.driver} · ${vehicleName}</div>
+          <div class="activity-meta">${formatDateShort(t.created_at)} · ${Number(t.km).toLocaleString('es-AR')} km</div>
+        </div>
+        <div class="activity-cost">${formatCurrency(t.cost)}</div>
+      `;
+      dom.dashRecentActivity.appendChild(item);
+    });
+  }
+}
+
+// ============================================================
+// 11. EVENT HANDLERS
 // ============================================================
 
 async function selectVehicle(vehicleId) {
@@ -802,6 +1036,7 @@ async function handleVehicleSubmit(e) {
     }
 
     state.vehicles = await fetchVehicles();
+    state.dashboardLoaded = false; // Force dashboard refresh
 
     if (state.modalMode === 'edit' && parseInt(dom.vehicleFormId.value) === state.activeVehicleId) {
       renderVehicleDetail();
@@ -845,8 +1080,11 @@ function handleDeleteVehicleClick() {
       haptic();
       state.vehicles = await fetchVehicles();
       state.activeVehicleId = null;
+      state.dashboardLoaded = false;
       toggleHidden(dom.confirmModal, true);
-      navigateBack();
+      renderVehicleDetail(); // Show empty state
+      navigateTo('home');
+      renderVehicleCards();
     } catch (err) {
       showToast('Error: ' + err.message, 'error');
     } finally {
@@ -882,6 +1120,7 @@ function handleClearTripsClick() {
       showToast('Viajes eliminados');
       haptic();
       state.trips = [];
+      state.dashboardLoaded = false;
       renderTrips();
       renderSummary();
       renderBalances();
@@ -933,6 +1172,7 @@ async function handlePaymentSubmit(e) {
     showToast('Pago registrado');
     haptic();
     state.payments = await fetchPayments(state.activeVehicleId);
+    state.dashboardLoaded = false;
     renderBalances();
     renderPaymentHistory();
     closePaymentModal();
@@ -961,6 +1201,7 @@ function handleDeletePayment(payment) {
       showToast('Pago eliminado');
       haptic();
       state.payments = await fetchPayments(state.activeVehicleId);
+      state.dashboardLoaded = false;
       renderBalances();
       renderPaymentHistory();
       toggleHidden(dom.confirmModal, true);
@@ -1023,6 +1264,7 @@ async function handleTripSubmit(e) {
     dom.tripForm.reset();
     dom.costPreviewValue.textContent = '$0,00';
     state.trips = await fetchTrips(state.activeVehicleId);
+    state.dashboardLoaded = false;
     renderTrips();
     renderSummary();
     renderBalances();
@@ -1041,6 +1283,7 @@ async function handleDeleteTrip(tripId) {
     showToast('Viaje eliminado');
     haptic();
     state.trips = await fetchTrips(state.activeVehicleId);
+    state.dashboardLoaded = false;
     renderTrips();
     renderSummary();
     renderBalances();
@@ -1070,7 +1313,6 @@ function generateSummaryText() {
   const trips = state.trips;
   const payments = state.payments;
 
-  // Per-driver totals
   const tripTotals = {};
   const paymentTotals = {};
   drivers.forEach((d) => {
@@ -1122,7 +1364,6 @@ async function handleShare() {
       await navigator.share({ text });
       haptic();
     } catch (err) {
-      // User cancelled share - that's ok
       if (err.name !== 'AbortError') {
         fallbackCopy(text);
       }
@@ -1143,15 +1384,18 @@ async function fallbackCopy(text) {
 }
 
 // ============================================================
-// 11. EVENT BINDING & INITIALIZATION
+// 12. EVENT BINDING & INITIALIZATION
 // ============================================================
 
 function bindEvents() {
   // Add vehicle
   $('#btn-add-vehicle').addEventListener('click', () => openVehicleModal('add'));
 
-  // Back button
-  $('#btn-back').addEventListener('click', navigateBack);
+  // Go to home from detail empty state
+  $('#btn-go-home').addEventListener('click', () => {
+    navigateTo('home');
+    haptic();
+  });
 
   // Share buttons
   $('#btn-share').addEventListener('click', handleShare);
@@ -1212,6 +1456,22 @@ function bindEvents() {
       state.confirmAction = null;
     }
   });
+
+  // Bottom Nav tabs
+  dom.bottomNav.querySelectorAll('.nav-tab').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const tab = btn.dataset.tab;
+      if (tab !== state.currentTab) {
+        navigateTo(tab);
+        haptic();
+      }
+    });
+  });
+
+  // Dashboard filter
+  dom.dashboardFilter.addEventListener('change', () => {
+    if (state.dashboardLoaded) renderDashboard();
+  });
 }
 
 async function init() {
@@ -1223,6 +1483,9 @@ async function init() {
   populateFormOptions();
   bindEvents();
   initSwipeGesture();
+
+  // Show detail empty state by default
+  renderVehicleDetail();
 
   try {
     state.vehicles = await fetchVehicles();
