@@ -219,12 +219,24 @@ function navigateTo(tab) {
 
   if (tab === 'detail') {
     dom.viewsContainer.classList.add('show-detail');
+    // Auto-load vehicle if none selected
+    if (!state.activeVehicleId) {
+      const vehicleId = state.lastVisitedVehicleId || (state.vehicles.length === 1 ? state.vehicles[0].id : null);
+      if (vehicleId) {
+        selectVehicle(vehicleId);
+      }
+    }
   } else if (tab === 'dashboard') {
     dom.viewsContainer.classList.add('show-dashboard');
     if (!state.dashboardLoaded) {
       loadDashboard();
     }
   }
+
+  // Reset scroll to top on target view
+  const viewMap = { detail: '#view-detail', home: '#view-home', dashboard: '#view-dashboard' };
+  const targetView = $(viewMap[tab]);
+  if (targetView) targetView.scrollTop = 0;
 
   updateActiveTab(tab);
 }
@@ -1390,6 +1402,19 @@ async function fallbackCopy(text) {
 function bindEvents() {
   // Add vehicle
   $('#btn-add-vehicle').addEventListener('click', () => openVehicleModal('add'));
+
+  // Add trip from Home
+  $('#btn-add-trip-home').addEventListener('click', () => {
+    const vehicleId = state.activeVehicleId || state.lastVisitedVehicleId || (state.vehicles.length === 1 ? state.vehicles[0].id : null);
+    if (vehicleId) {
+      selectVehicle(vehicleId);
+      haptic();
+    } else if (state.vehicles.length > 1) {
+      showToast('Selecciona un vehiculo primero', 'error');
+    } else {
+      showToast('Agrega un vehiculo primero', 'error');
+    }
+  });
 
   // Go to home from detail empty state
   $('#btn-go-home').addEventListener('click', () => {
