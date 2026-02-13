@@ -20,12 +20,15 @@
     <div class="view" id="view-detail">
       <div class="view-content">
 
-        <!-- Detail: empty state (no vehicle selected) -->
+        <!-- Detail: empty state (no vehicles at all) -->
         <div id="detail-empty" class="detail-empty-state">
           <div class="detail-empty-icon">&#128663;</div>
-          <p>Selecciona un vehiculo desde Home</p>
+          <p>No hay vehiculos cargados</p>
           <button id="btn-go-home" class="btn btn-primary btn-sm">Ir a Home</button>
         </div>
+
+        <!-- Vehicle pills selector -->
+        <div id="vehicle-pills" class="vehicle-pills hidden"></div>
 
         <!-- Detail: vehicle content (hidden until selected) -->
         <div id="detail-content" class="hidden">
@@ -239,7 +242,7 @@
   <nav id="bottom-nav" class="bottom-nav">
     <button class="nav-tab" data-tab="detail" id="nav-detail">
       <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M17.5 14v7M14 17.5h7"/></svg>
-      <span class="nav-label">Vehiculo</span>
+      <span class="nav-label">Vehiculos</span>
     </button>
     <button class="nav-tab active" data-tab="home" id="nav-home">
       <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-4 0a1 1 0 01-1-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 01-1 1"/></svg>

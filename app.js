@@ -63,6 +63,7 @@ const dom = {
   homeLoading: $('#home-loading'),
   // Detail
   detailEmpty: $('#detail-empty'),
+  vehiclePills: $('#vehicle-pills'),
   detailContent: $('#detail-content'),
   detailTitle: $('#detail-title'),
   vehicleModelBadge: $('#vehicle-model-badge'),
@@ -219,12 +220,11 @@ function navigateTo(tab) {
 
   if (tab === 'detail') {
     dom.viewsContainer.classList.add('show-detail');
-    // Auto-load vehicle if none selected
-    if (!state.activeVehicleId) {
-      const vehicleId = state.lastVisitedVehicleId || (state.vehicles.length === 1 ? state.vehicles[0].id : null);
-      if (vehicleId) {
-        selectVehicle(vehicleId);
-      }
+    renderVehiclePills();
+    // Auto-load first/last vehicle if none selected
+    if (!state.activeVehicleId && state.vehicles.length > 0) {
+      const vehicleId = state.lastVisitedVehicleId || state.vehicles[0].id;
+      selectVehicle(vehicleId);
     }
   } else if (tab === 'dashboard') {
     dom.viewsContainer.classList.add('show-dashboard');
@@ -520,16 +520,48 @@ async function renderVehicleCards() {
   });
 }
 
+function renderVehiclePills() {
+  dom.vehiclePills.innerHTML = '';
+
+  if (state.vehicles.length === 0) {
+    toggleHidden(dom.vehiclePills, true);
+    return;
+  }
+
+  toggleHidden(dom.vehiclePills, false);
+
+  state.vehicles.forEach((v) => {
+    const pill = document.createElement('button');
+    pill.className = 'vehicle-pill' + (v.id === state.activeVehicleId ? ' active' : '');
+    pill.textContent = v.name;
+    pill.addEventListener('click', () => {
+      if (v.id !== state.activeVehicleId) {
+        selectVehicle(v.id);
+        haptic();
+      }
+    });
+    dom.vehiclePills.appendChild(pill);
+  });
+}
+
+function updatePillsActive() {
+  dom.vehiclePills.querySelectorAll('.vehicle-pill').forEach((pill, i) => {
+    pill.classList.toggle('active', state.vehicles[i] && state.vehicles[i].id === state.activeVehicleId);
+  });
+}
+
 function renderVehicleDetail() {
   const vehicle = getActiveVehicle();
   if (!vehicle) {
-    toggleHidden(dom.detailEmpty, false);
+    toggleHidden(dom.detailEmpty, state.vehicles.length > 0);
+    toggleHidden(dom.vehiclePills, state.vehicles.length === 0);
     toggleHidden(dom.detailContent, true);
     return;
   }
 
   toggleHidden(dom.detailEmpty, true);
   toggleHidden(dom.detailContent, false);
+  updatePillsActive();
 
   dom.detailTitle.textContent = vehicle.name;
   dom.vehicleModelBadge.textContent = vehicle.model;
@@ -950,7 +982,12 @@ async function selectVehicle(vehicleId) {
   state.activeVehicleId = vehicleId;
   state.lastVisitedVehicleId = vehicleId;
   renderVehicleDetail();
-  navigateTo('detail');
+
+  if (state.currentTab !== 'detail') {
+    navigateTo('detail');
+  } else {
+    updatePillsActive();
+  }
 
   $('#view-detail').scrollTop = 0;
 

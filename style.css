@@ -193,6 +193,46 @@ body {
   font-size: 3rem;
 }
 
+/* --- Vehicle Pills Selector --- */
+.vehicle-pills {
+  display: flex;
+  gap: 0.5rem;
+  overflow-x: auto;
+  padding: 0.75rem 0 0.5rem;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.vehicle-pills::-webkit-scrollbar {
+  display: none;
+}
+
+.vehicle-pill {
+  padding: 0.45rem 1rem;
+  border-radius: 999px;
+  border: 1px solid var(--glass-border);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: all var(--transition);
+  font-family: var(--font-family);
+  min-height: 36px;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.vehicle-pill.active {
+  background: var(--color-primary);
+  color: #fff;
+  border-color: var(--color-primary);
+}
+
+.vehicle-pill:active {
+  transform: scale(0.95);
+}
+
 /* --- Vehicle Cards Grid (Home) --- */
 .vehicles-grid {
   display: grid;
