@@ -1207,6 +1207,26 @@ h3 {
 .payment-item .payment-meta { font-size: 0.72rem; color: var(--text-muted); }
 .payment-item .payment-amount { font-weight: 700; color: var(--color-success); white-space: nowrap; }
 
+/* --- Section Actions (header with multiple buttons) --- */
+.section-actions { display: flex; gap: 0.5rem; }
+
+/* --- Clearing / Liquidacion Sugerida --- */
+.clearing-section { margin-top: 1rem; }
+.clearing-section h4 { font-size: 0.95rem; color: var(--text-secondary); margin-bottom: 0.5rem; font-weight: 600; }
+.clearing-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  margin-bottom: 0.5rem;
+  font-size: 0.88rem;
+}
+.clearing-arrow { color: var(--color-primary); font-weight: 700; font-size: 1.1rem; }
+.clearing-amount { margin-left: auto; font-weight: 600; color: var(--color-primary); }
+
 .empty-state-sm {
   text-align: center;
   padding: 0.75rem;

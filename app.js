@@ -80,6 +80,9 @@ const dom = {
   summaryGrid: $('#summary-grid'),
   summaryTotalValue: $('#summary-total-value'),
   balancesGrid: $('#balances-grid'),
+  btnAddFuel: $('#btn-add-fuel'),
+  clearingSection: $('#clearing-section'),
+  clearingList: $('#clearing-list'),
   paymentsList: $('#payments-list'),
   paymentsEmpty: $('#payments-empty'),
   tripsLoading: $('#trips-loading'),
@@ -683,54 +686,86 @@ function renderSummary() {
 function renderBalances() {
   const vehicle = getActiveVehicle();
   const drivers = vehicle ? (vehicle.drivers || []) : [];
-  const trips = state.trips;
-  const payments = state.payments;
 
-  const tripTotals = {};
-  const paymentTotals = {};
-  drivers.forEach((d) => {
-    tripTotals[d] = 0;
-    paymentTotals[d] = 0;
+  // Créditos: cargas de combustible (payments)
+  const credits = {};
+  // Débitos: consumo por viajes (trips)
+  const debits = {};
+  drivers.forEach((d) => { credits[d] = 0; debits[d] = 0; });
+
+  state.payments.forEach((p) => {
+    if (credits[p.driver] !== undefined) credits[p.driver] += Number(p.amount);
   });
-
-  trips.forEach((t) => {
-    if (tripTotals[t.driver] !== undefined) {
-      tripTotals[t.driver] += Number(t.cost);
-    }
-  });
-
-  payments.forEach((p) => {
-    if (paymentTotals[p.driver] !== undefined) {
-      paymentTotals[p.driver] += Number(p.amount);
-    }
+  state.trips.forEach((t) => {
+    if (debits[t.driver] !== undefined) debits[t.driver] += Number(t.cost);
   });
 
   dom.balancesGrid.innerHTML = '';
+  const balances = [];
 
   drivers.forEach((driver) => {
-    const spent = tripTotals[driver];
-    const paid = paymentTotals[driver];
-    const balance = spent - paid;
-    const isClear = balance <= 0;
+    const credit = credits[driver];
+    const debit = debits[driver];
+    const net = +(credit - debit).toFixed(2); // Balance = Aportes - Consumos
+    balances.push({ driver, net });
 
     const card = document.createElement('div');
     card.className = 'balance-card';
+    const isPositive = net > 0;
+    const isZero = Math.abs(net) < 0.01;
     card.innerHTML = `
       <div class="driver-name">${driver}</div>
-      <div class="balance-amount ${isClear ? 'clear' : 'debt'}">${isClear ? 'Al dia' : formatCurrency(balance)}</div>
-      <div class="balance-detail">Gastado: ${formatCurrency(spent)} · Pagado: ${formatCurrency(paid)}</div>
-      ${isClear
-        ? '<span class="badge-clear">Saldado</span>'
-        : `<button class="btn-pay" data-driver="${driver}" data-balance="${balance.toFixed(2)}">Registrar pago</button>`
-      }
+      <div class="balance-amount ${isZero ? 'clear' : isPositive ? 'clear' : 'debt'}">
+        ${isZero ? 'Al dia' : (isPositive ? '+' : '') + formatCurrency(net)}
+      </div>
+      <div class="balance-detail">Aportes: ${formatCurrency(credit)} · Consumo: ${formatCurrency(debit)}</div>
+      ${isZero ? '<span class="badge-clear">Saldado</span>' :
+        isPositive ? '<span class="badge-clear">A favor</span>' : ''}
     `;
-
-    const payBtn = card.querySelector('.btn-pay');
-    if (payBtn) {
-      payBtn.addEventListener('click', () => openPaymentModal(driver, balance));
-    }
-
     dom.balancesGrid.appendChild(card);
+  });
+
+  renderClearing(balances);
+}
+
+function renderClearing(balances) {
+  const debtors = balances.filter(b => b.net < -0.01).map(b => ({ driver: b.driver, net: +Math.abs(b.net).toFixed(2) }));
+  const creditors = balances.filter(b => b.net > 0.01).map(b => ({ driver: b.driver, net: +b.net.toFixed(2) }));
+
+  debtors.sort((a, b) => b.net - a.net);
+  creditors.sort((a, b) => b.net - a.net);
+
+  const transfers = [];
+  let i = 0, j = 0;
+
+  while (i < debtors.length && j < creditors.length) {
+    const amount = +Math.min(debtors[i].net, creditors[j].net).toFixed(2);
+    if (amount > 0.01) {
+      transfers.push({ from: debtors[i].driver, to: creditors[j].driver, amount });
+    }
+    debtors[i].net = +(debtors[i].net - amount).toFixed(2);
+    creditors[j].net = +(creditors[j].net - amount).toFixed(2);
+    if (debtors[i].net < 0.01) i++;
+    if (creditors[j].net < 0.01) j++;
+  }
+
+  dom.clearingList.innerHTML = '';
+  if (transfers.length === 0) {
+    toggleHidden(dom.clearingSection, true);
+    return;
+  }
+
+  toggleHidden(dom.clearingSection, false);
+  transfers.forEach((t) => {
+    const item = document.createElement('div');
+    item.className = 'clearing-item';
+    item.innerHTML = `
+      <span>${t.from}</span>
+      <span class="clearing-arrow">&rarr;</span>
+      <span>${t.to}</span>
+      <span class="clearing-amount">${formatCurrency(t.amount)}</span>
+    `;
+    dom.clearingList.appendChild(item);
   });
 }
 
@@ -758,7 +793,7 @@ function renderPaymentHistory() {
 
     const deleteBtn = document.createElement('button');
     deleteBtn.className = 'btn-icon btn-icon-danger';
-    deleteBtn.title = 'Deshacer pago';
+    deleteBtn.title = 'Eliminar carga';
     deleteBtn.innerHTML = '&times;';
     deleteBtn.style.fontSize = '1.1rem';
     deleteBtn.addEventListener('click', () => handleDeletePayment(p));
@@ -1203,11 +1238,20 @@ function handleClearTripsClick() {
 
 // --- Payment Modal ---
 
-function openPaymentModal(driver, balance) {
-  dom.paymentDriver.value = driver;
-  dom.paymentAmount.value = balance > 0 ? balance.toFixed(2) : '';
+function openPaymentModal() {
+  const vehicle = getActiveVehicle();
+  if (!vehicle) return;
+  const select = dom.paymentDriver;
+  select.innerHTML = '<option value="">Seleccionar...</option>';
+  (vehicle.drivers || []).forEach((d) => {
+    const opt = document.createElement('option');
+    opt.value = d;
+    opt.textContent = d;
+    select.appendChild(opt);
+  });
+  dom.paymentAmount.value = '';
   dom.paymentNote.value = '';
-  $('#payment-modal-title').textContent = `Pago de ${driver}`;
+  $('#payment-modal-title').textContent = 'Cargar combustible';
   toggleHidden(dom.paymentModal, false);
 }
 
@@ -1220,6 +1264,13 @@ async function handlePaymentSubmit(e) {
   const btn = dom.btnSubmitPayment;
   setButtonLoading(btn, true);
 
+  const driver = dom.paymentDriver.value;
+  if (!driver) {
+    showToast('Selecciona un hermano', 'error');
+    setButtonLoading(btn, false);
+    return;
+  }
+
   const amount = parseFloat(dom.paymentAmount.value);
   if (!amount || amount <= 0) {
     showToast('Ingresa un monto valido', 'error');
@@ -1230,11 +1281,11 @@ async function handlePaymentSubmit(e) {
   try {
     await createPayment({
       vehicle_id: state.activeVehicleId,
-      driver: dom.paymentDriver.value,
+      driver,
       amount,
       note: dom.paymentNote.value.trim() || null,
     });
-    showToast('Pago registrado');
+    showToast('Carga registrada');
     haptic();
     state.payments = await fetchPayments(state.activeVehicleId);
     state.dashboardLoaded = false;
@@ -1251,19 +1302,19 @@ async function handlePaymentSubmit(e) {
 // --- Payment Delete ---
 
 function handleDeletePayment(payment) {
-  dom.confirmTitle.textContent = 'Deshacer pago';
+  dom.confirmTitle.textContent = 'Eliminar carga';
   dom.confirmMessage.textContent =
-    `¿Deshacer el pago de ${formatCurrency(payment.amount)} de ${payment.driver}?`;
+    `¿Eliminar la carga de ${formatCurrency(payment.amount)} de ${payment.driver}?`;
 
   const btnText = dom.btnConfirmOk.querySelector('.btn-text');
-  if (btnText) btnText.textContent = 'Deshacer';
+  if (btnText) btnText.textContent = 'Eliminar';
 
   state.confirmAction = async () => {
     const btn = dom.btnConfirmOk;
     setButtonLoading(btn, true);
     try {
       await deletePayment(payment.id);
-      showToast('Pago eliminado');
+      showToast('Carga eliminada');
       haptic();
       state.payments = await fetchPayments(state.activeVehicleId);
       state.dashboardLoaded = false;
@@ -1373,48 +1424,52 @@ function handleModelChange() {
 function generateSummaryText() {
   const vehicle = getActiveVehicle();
   if (!vehicle) return '';
-
   const drivers = vehicle.drivers || [];
-  const trips = state.trips;
-  const payments = state.payments;
 
-  const tripTotals = {};
-  const paymentTotals = {};
+  const credits = {}, debits = {};
+  drivers.forEach((d) => { credits[d] = 0; debits[d] = 0; });
+  state.payments.forEach((p) => { if (credits[p.driver] !== undefined) credits[p.driver] += Number(p.amount); });
+  state.trips.forEach((t) => { if (debits[t.driver] !== undefined) debits[t.driver] += Number(t.cost); });
+
+  let totalConsumo = 0;
+  const balances = [];
   drivers.forEach((d) => {
-    tripTotals[d] = { cost: 0, trips: 0, km: 0 };
-    paymentTotals[d] = 0;
+    totalConsumo += debits[d];
+    balances.push({ driver: d, net: +(credits[d] - debits[d]).toFixed(2) });
   });
 
-  trips.forEach((t) => {
-    if (tripTotals[t.driver]) {
-      tripTotals[t.driver].cost += Number(t.cost);
-      tripTotals[t.driver].trips += 1;
-      tripTotals[t.driver].km += Number(t.km);
-    }
+  // Clearing algorithm
+  const debtors = balances.filter(b => b.net < -0.01).map(b => ({ driver: b.driver, net: +Math.abs(b.net).toFixed(2) }));
+  const creditors = balances.filter(b => b.net > 0.01).map(b => ({ driver: b.driver, net: +b.net.toFixed(2) }));
+  debtors.sort((a, b) => b.net - a.net);
+  creditors.sort((a, b) => b.net - a.net);
+  const transfers = [];
+  let i = 0, j = 0;
+  while (i < debtors.length && j < creditors.length) {
+    const amount = +Math.min(debtors[i].net, creditors[j].net).toFixed(2);
+    if (amount > 0.01) transfers.push({ from: debtors[i].driver, to: creditors[j].driver, amount });
+    debtors[i].net = +(debtors[i].net - amount).toFixed(2);
+    creditors[j].net = +(creditors[j].net - amount).toFixed(2);
+    if (debtors[i].net < 0.01) i++;
+    if (creditors[j].net < 0.01) j++;
+  }
+
+  let text = `Hola! Les comparto la liquidacion de *${vehicle.name}*\n\n`;
+  text += `Consumo total: *${formatCurrency(totalConsumo)}* en ${state.trips.length} viaje${state.trips.length !== 1 ? 's' : ''}\n\n`;
+
+  text += `Saldos:\n`;
+  balances.forEach((b) => {
+    const isZero = Math.abs(b.net) < 0.01;
+    const status = isZero ? 'Al dia ✓' : (b.net > 0 ? `A favor *${formatCurrency(b.net)}*` : `Debe *${formatCurrency(Math.abs(b.net))}*`);
+    text += `• ${b.driver}: ${status}\n`;
   });
 
-  payments.forEach((p) => {
-    if (paymentTotals[p.driver] !== undefined) {
-      paymentTotals[p.driver] += Number(p.amount);
-    }
-  });
+  if (transfers.length > 0) {
+    text += `\nTransferencias sugeridas:\n`;
+    transfers.forEach((t) => { text += `• ${t.from} → ${t.to}: *${formatCurrency(t.amount)}*\n`; });
+  }
 
-  let grandTotal = 0;
-  drivers.forEach((d) => { grandTotal += tripTotals[d].cost; });
-
-  let text = `Hola! Les comparto el resumen de gastos de *${vehicle.name}*\n\n`;
-  text += `Vehiculo: ${vehicle.model} | Combustible: ${vehicle.fuel_type} (${formatCurrency(vehicle.fuel_price)}/l)\n`;
-  text += `Total acumulado: *${formatCurrency(grandTotal)}* en ${trips.length} viaje${trips.length !== 1 ? 's' : ''}\n\n`;
-
-  text += `Estado de cuentas:\n`;
-  drivers.forEach((d) => {
-    const balance = tripTotals[d].cost - paymentTotals[d];
-    const status = balance <= 0 ? 'Al dia ✓' : `Debe *${formatCurrency(balance)}*`;
-    text += `• ${d}: ${status}\n`;
-  });
-
-  text += `\nVer detalle completo en:\nhttps://naftometro.vercel.app`;
-
+  text += `\nVer detalle en:\nhttps://naftometro.vercel.app`;
   return text;
 }
 
@@ -1476,6 +1531,9 @@ function bindEvents() {
   // Share buttons
   $('#btn-share').addEventListener('click', handleShare);
   $('#btn-share-balances').addEventListener('click', handleShare);
+
+  // Fuel load button
+  dom.btnAddFuel.addEventListener('click', () => openPaymentModal());
 
   // Toggle dashboard total spent (exact vs short)
   dom.dashTotalSpent.addEventListener('click', () => {

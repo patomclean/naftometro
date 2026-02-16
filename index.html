@@ -100,16 +100,23 @@
           <div class="glass-card">
             <div class="section-header">
               <h3>Balances</h3>
-              <button id="btn-share-balances" class="btn btn-secondary btn-sm">Compartir</button>
+              <div class="section-actions">
+                <button id="btn-add-fuel" class="btn btn-primary btn-sm">+ Cargar combustible</button>
+                <button id="btn-share-balances" class="btn btn-secondary btn-sm">Compartir</button>
+              </div>
             </div>
             <div id="balances-grid" class="balances-grid"></div>
+            <div id="clearing-section" class="clearing-section hidden">
+              <h4>Liquidacion sugerida</h4>
+              <div id="clearing-list" class="clearing-list"></div>
+            </div>
             <div id="payments-section">
               <div class="section-header" style="margin-top:1rem">
-                <h4 class="payments-title">Historial de pagos</h4>
+                <h4 class="payments-title">Cargas de combustible</h4>
               </div>
               <div id="payments-list" class="payments-list"></div>
               <div id="payments-empty" class="empty-state-sm hidden">
-                <p>No hay pagos registrados.</p>
+                <p>No hay cargas registradas.</p>
               </div>
             </div>
           </div>
@@ -300,25 +307,30 @@
     </div>
   </div>
 
-  <!-- Payment Modal -->
+  <!-- Fuel Load Modal -->
   <div id="payment-modal" class="modal-overlay hidden">
     <div class="modal glass-card modal-sm">
       <div class="modal-header">
-        <h3 id="payment-modal-title">Registrar pago</h3>
+        <h3 id="payment-modal-title">Cargar combustible</h3>
         <button id="btn-close-payment-modal" class="btn-icon">&times;</button>
       </div>
       <form id="payment-form">
-        <input type="hidden" id="payment-driver">
+        <div class="form-group">
+          <label for="payment-driver">Hermano</label>
+          <select id="payment-driver" required>
+            <option value="">Seleccionar...</option>
+          </select>
+        </div>
         <div class="form-group">
           <label for="payment-amount">Monto ($)</label>
-          <input type="number" id="payment-amount" min="1" step="0.01" required placeholder="Ej: 3200">
+          <input type="number" id="payment-amount" min="1" step="0.01" required placeholder="Ej: 15000">
         </div>
         <div class="form-group">
           <label for="payment-note">Nota (opcional)</label>
-          <input type="text" id="payment-note" maxlength="100" placeholder="Ej: Transferencia">
+          <input type="text" id="payment-note" maxlength="100" placeholder="Ej: Cargue 20 lts en YPF">
         </div>
         <button type="submit" id="btn-submit-payment" class="btn btn-primary btn-block">
-          <span class="btn-text">Registrar pago</span>
+          <span class="btn-text">Registrar carga</span>
           <span class="btn-loader hidden"></span>
         </button>
       </form>
