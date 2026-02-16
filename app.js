@@ -859,7 +859,9 @@ function renderDashboard() {
     totalKm += Number(t.km);
   });
 
-  dom.dashTotalSpent.textContent = formatCurrencyShort(totalSpent);
+  dom.dashTotalSpent.textContent = formatCurrency(totalSpent);
+  dom.dashTotalSpent.dataset.full = formatCurrency(totalSpent);
+  dom.dashTotalSpent.dataset.short = formatCurrencyShort(totalSpent);
   dom.dashTotalTrips.textContent = trips.length;
   dom.dashTotalKm.textContent = totalKm.toLocaleString('es-AR', { maximumFractionDigits: 0 });
 
@@ -1054,12 +1056,26 @@ async function handleVehicleSubmit(e) {
     return;
   }
 
+  const consumption = parseFloat(dom.vehicleConsumptionInput.value);
+  const fuelPrice = parseFloat(dom.vehicleFuelPriceInput.value);
+
+  if (!consumption || consumption <= 0) {
+    showToast('El consumo debe ser mayor a 0', 'error');
+    setButtonLoading(btn, false);
+    return;
+  }
+  if (!fuelPrice || fuelPrice <= 0) {
+    showToast('El precio del combustible debe ser mayor a 0', 'error');
+    setButtonLoading(btn, false);
+    return;
+  }
+
   const payload = {
     name: dom.vehicleNameInput.value.trim(),
     model: dom.vehicleModelSelect.value,
-    consumption: parseFloat(dom.vehicleConsumptionInput.value),
+    consumption,
     fuel_type: dom.vehicleFuelTypeSelect.value,
-    fuel_price: parseFloat(dom.vehicleFuelPriceInput.value),
+    fuel_price: fuelPrice,
     drivers,
   };
 
@@ -1383,23 +1399,21 @@ function generateSummaryText() {
     }
   });
 
-  let text = `*Naftometro - ${vehicle.name}*\n`;
-  text += `${vehicle.model} | ${vehicle.fuel_type} | ${formatCurrency(vehicle.fuel_price)}/l\n\n`;
-
-  text += `*Resumen de gastos:*\n`;
   let grandTotal = 0;
-  drivers.forEach((d) => {
-    const data = tripTotals[d];
-    grandTotal += data.cost;
-    text += `- ${d}: ${formatCurrency(data.cost)} (${data.trips} viaje${data.trips !== 1 ? 's' : ''}, ${Number(data.km).toLocaleString('es-AR')} km)\n`;
-  });
-  text += `Total: ${formatCurrency(grandTotal)}\n\n`;
+  drivers.forEach((d) => { grandTotal += tripTotals[d].cost; });
 
-  text += `*Balances:*\n`;
+  let text = `Hola! Les comparto el resumen de gastos de *${vehicle.name}*\n\n`;
+  text += `Vehiculo: ${vehicle.model} | Combustible: ${vehicle.fuel_type} (${formatCurrency(vehicle.fuel_price)}/l)\n`;
+  text += `Total acumulado: *${formatCurrency(grandTotal)}* en ${trips.length} viaje${trips.length !== 1 ? 's' : ''}\n\n`;
+
+  text += `Estado de cuentas:\n`;
   drivers.forEach((d) => {
     const balance = tripTotals[d].cost - paymentTotals[d];
-    text += `- ${d}: ${balance <= 0 ? 'Al dia' : 'Debe ' + formatCurrency(balance)}\n`;
+    const status = balance <= 0 ? 'Al dia ✓' : `Debe *${formatCurrency(balance)}*`;
+    text += `• ${d}: ${status}\n`;
   });
+
+  text += `\nVer detalle completo en:\nhttps://naftometro.vercel.app`;
 
   return text;
 }
@@ -1462,6 +1476,14 @@ function bindEvents() {
   // Share buttons
   $('#btn-share').addEventListener('click', handleShare);
   $('#btn-share-balances').addEventListener('click', handleShare);
+
+  // Toggle dashboard total spent (exact vs short)
+  dom.dashTotalSpent.addEventListener('click', () => {
+    const el = dom.dashTotalSpent;
+    const isFull = el.textContent === el.dataset.full;
+    el.textContent = isFull ? el.dataset.short : el.dataset.full;
+  });
+  dom.dashTotalSpent.style.cursor = 'pointer';
 
   // Edit vehicle
   $('#btn-edit-vehicle').addEventListener('click', () => {
