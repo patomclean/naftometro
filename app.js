@@ -49,6 +49,7 @@ const state = {
   dashboardLoaded: false,
   allTrips: [],
   allPayments: [],
+  pendingConsumptionUpdate: null,
 };
 
 // ============================================================
@@ -106,6 +107,9 @@ const dom = {
   paymentForm: $('#payment-form'),
   paymentDriver: $('#payment-driver'),
   paymentAmount: $('#payment-amount'),
+  paymentLiters: $('#payment-liters'),
+  paymentPricePerLiter: $('#payment-price-per-liter'),
+  paymentFullTank: $('#payment-full-tank'),
   paymentNote: $('#payment-note'),
   btnSubmitPayment: $('#btn-submit-payment'),
   confirmModal: $('#confirm-modal'),
@@ -174,6 +178,11 @@ function getDateGroup(isoString) {
 
 function getMonthName(date) {
   return date.toLocaleDateString('es-AR', { month: 'long' });
+}
+
+function getLatestFuelPrice(vehicle) {
+  const latestWithPrice = state.payments.find(p => p.price_per_liter > 0);
+  return latestWithPrice ? latestWithPrice.price_per_liter : vehicle.fuel_price;
 }
 
 function calculateCost(km, consumption, fuelPrice) {
@@ -783,10 +792,17 @@ function renderPaymentHistory() {
   payments.forEach((p) => {
     const item = document.createElement('div');
     item.className = 'payment-item';
+    const extraInfo = [];
+    if (p.liters_loaded) extraInfo.push(`${p.liters_loaded} lts`);
+    if (p.price_per_liter) extraInfo.push(`${formatCurrency(p.price_per_liter)}/l`);
+    if (p.is_full_tank) extraInfo.push('Tanque lleno');
+    const metaParts = [formatDate(p.created_at), ...extraInfo];
+    if (p.note) metaParts.push(p.note);
+
     item.innerHTML = `
       <div class="payment-info">
         <div class="payment-driver">${p.driver}</div>
-        <div class="payment-meta">${formatDate(p.created_at)}${p.note ? ' · ' + p.note : ''}</div>
+        <div class="payment-meta">${metaParts.join(' · ')}</div>
       </div>
       <span class="payment-amount">${formatCurrency(p.amount)}</span>
     `;
@@ -1250,6 +1266,9 @@ function openPaymentModal() {
     select.appendChild(opt);
   });
   dom.paymentAmount.value = '';
+  dom.paymentLiters.value = '';
+  dom.paymentPricePerLiter.value = '';
+  dom.paymentFullTank.checked = false;
   dom.paymentNote.value = '';
   $('#payment-modal-title').textContent = 'Cargar combustible';
   toggleHidden(dom.paymentModal, false);
@@ -1278,12 +1297,19 @@ async function handlePaymentSubmit(e) {
     return;
   }
 
+  const litersLoaded = parseFloat(dom.paymentLiters.value) || null;
+  const pricePerLiter = parseFloat(dom.paymentPricePerLiter.value) || null;
+  const isFullTank = dom.paymentFullTank.checked;
+
   try {
     await createPayment({
       vehicle_id: state.activeVehicleId,
       driver,
       amount,
       note: dom.paymentNote.value.trim() || null,
+      liters_loaded: litersLoaded,
+      price_per_liter: pricePerLiter,
+      is_full_tank: isFullTank,
     });
     showToast('Carga registrada');
     haptic();
@@ -1292,11 +1318,103 @@ async function handlePaymentSubmit(e) {
     renderBalances();
     renderPaymentHistory();
     closePaymentModal();
+
+    // Sincronizar fuel_price del vehículo con el precio de esta carga
+    if (pricePerLiter && pricePerLiter > 0) {
+      const vehicle = getActiveVehicle();
+      if (vehicle && vehicle.fuel_price !== pricePerLiter) {
+        await updateVehicle(state.activeVehicleId, { fuel_price: pricePerLiter });
+        state.vehicles = await fetchVehicles();
+        renderVehicleDetail();
+        renderVehicleCards();
+        showToast(`Precio actualizado: ${formatCurrency(pricePerLiter)}/l`);
+      }
+    }
+
+    // Auto-corrección de consumo si fue tanque lleno
+    if (isFullTank) {
+      await checkRealConsumption();
+    }
   } catch (err) {
     showToast('Error: ' + err.message, 'error');
   } finally {
     setButtonLoading(btn, false);
   }
+}
+
+// --- Auto-Corrección de Consumo ---
+
+async function checkRealConsumption() {
+  const vehicle = getActiveVehicle();
+  if (!vehicle) return;
+
+  const fullTankLoads = state.payments
+    .filter(p => p.is_full_tank && p.liters_loaded > 0)
+    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+  if (fullTankLoads.length < 2) return;
+
+  const latest = fullTankLoads[0];
+  const previous = fullTankLoads[1];
+  const latestDate = new Date(latest.created_at);
+  const previousDate = new Date(previous.created_at);
+
+  const tripsBetween = state.trips.filter(t => {
+    const d = new Date(t.created_at);
+    return d > previousDate && d <= latestDate;
+  });
+  const totalKm = tripsBetween.reduce((sum, t) => sum + Number(t.km), 0);
+  if (totalKm <= 0) return;
+
+  const loadsBetween = state.payments.filter(p => {
+    if (!p.liters_loaded || p.liters_loaded <= 0) return false;
+    const d = new Date(p.created_at);
+    return d > previousDate && d <= latestDate;
+  });
+  const totalLiters = loadsBetween.reduce((sum, p) => sum + Number(p.liters_loaded), 0);
+  if (totalLiters <= 0) return;
+
+  const realConsumption = +(totalKm / totalLiters).toFixed(1);
+  const deviation = Math.abs(realConsumption - vehicle.consumption) / vehicle.consumption;
+
+  if (deviation > 0.05) {
+    state.pendingConsumptionUpdate = { vehicleId: vehicle.id, value: realConsumption };
+    showConsumptionToast(realConsumption, vehicle.consumption);
+  }
+}
+
+function showConsumptionToast(realConsumption, currentConsumption) {
+  const toast = document.createElement('div');
+  toast.className = 'toast toast-action';
+  toast.innerHTML = `
+    <div>Consumo real detectado: <strong>${realConsumption} km/l</strong> (actual: ${currentConsumption} km/l)</div>
+    <button class="toast-btn">Actualizar perfil</button>
+  `;
+  dom.toastContainer.appendChild(toast);
+
+  toast.querySelector('.toast-btn').addEventListener('click', async () => {
+    const pending = state.pendingConsumptionUpdate;
+    if (pending) {
+      try {
+        await updateVehicle(pending.vehicleId, { consumption: pending.value });
+        state.vehicles = await fetchVehicles();
+        renderVehicleDetail();
+        renderVehicleCards();
+        showToast(`Consumo actualizado: ${pending.value} km/l`);
+      } catch (err) {
+        showToast('Error: ' + err.message, 'error');
+      }
+      state.pendingConsumptionUpdate = null;
+    }
+    toast.remove();
+  });
+
+  setTimeout(() => {
+    if (toast.parentNode) {
+      toast.classList.add('toast-exit');
+      toast.addEventListener('animationend', () => toast.remove());
+    }
+  }, 10000);
 }
 
 // --- Payment Delete ---
@@ -1338,7 +1456,7 @@ function handleTripKmInput() {
   const vehicle = getActiveVehicle();
   const km = parseFloat(dom.tripKm.value) || 0;
   if (vehicle && km > 0) {
-    const { cost } = calculateCost(km, vehicle.consumption, vehicle.fuel_price);
+    const { cost } = calculateCost(km, vehicle.consumption, getLatestFuelPrice(vehicle));
     dom.costPreviewValue.textContent = formatCurrency(cost);
   } else {
     dom.costPreviewValue.textContent = '$0,00';
@@ -1362,7 +1480,7 @@ async function handleTripSubmit(e) {
     return;
   }
 
-  const { liters, cost } = calculateCost(km, vehicle.consumption, vehicle.fuel_price);
+  const { liters, cost } = calculateCost(km, vehicle.consumption, getLatestFuelPrice(vehicle));
   const btn = dom.btnSubmitTrip;
   setButtonLoading(btn, true);
 
@@ -1572,6 +1690,17 @@ function bindEvents() {
     if (e.target === dom.paymentModal) closePaymentModal();
   });
   dom.paymentForm.addEventListener('submit', handlePaymentSubmit);
+
+  // Auto-calc fuel load amount
+  const autoCalcFuelAmount = () => {
+    const liters = parseFloat(dom.paymentLiters.value);
+    const ppl = parseFloat(dom.paymentPricePerLiter.value);
+    if (liters > 0 && ppl > 0) {
+      dom.paymentAmount.value = (liters * ppl).toFixed(2);
+    }
+  };
+  dom.paymentLiters.addEventListener('input', autoCalcFuelAmount);
+  dom.paymentPricePerLiter.addEventListener('input', autoCalcFuelAmount);
 
   // Trip form
   dom.tripForm.addEventListener('submit', handleTripSubmit);
