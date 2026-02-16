@@ -58,7 +58,7 @@
             <form id="trip-form">
               <div class="form-row">
                 <div class="form-group">
-                  <label for="trip-driver">Conductor</label>
+                  <label for="trip-driver">Piloto</label>
                   <select id="trip-driver" required>
                     <option value="">Seleccionar...</option>
                   </select>
@@ -136,7 +136,7 @@
                 <thead>
                   <tr>
                     <th>Fecha</th>
-                    <th>Conductor</th>
+                    <th>Piloto</th>
                     <th>Km</th>
                     <th>Litros</th>
                     <th>Costo</th>
@@ -158,7 +158,7 @@
       <div class="view-content">
         <header class="app-header">
           <h1>Naftometro</h1>
-          <p class="subtitle">Calculadora de nafta entre hermanos</p>
+          <p class="subtitle">Gestion de nafta compartida</p>
           <div class="header-actions">
             <button id="btn-add-trip-home" class="btn btn-secondary">+ Agregar viaje</button>
             <button id="btn-add-vehicle" class="btn btn-primary">+ Agregar vehiculo</button>
@@ -316,10 +316,19 @@
       </div>
       <form id="payment-form">
         <div class="form-group">
-          <label for="payment-driver">Hermano</label>
+          <label for="payment-driver">Piloto</label>
           <select id="payment-driver" required>
             <option value="">Seleccionar...</option>
           </select>
+        </div>
+        <div class="form-group">
+          <label for="payment-amount">Monto total ($)</label>
+          <input type="number" id="payment-amount" min="1" step="0.01" required placeholder="Ej: 15000">
+        </div>
+        <div class="quick-amounts">
+          <button type="button" class="quick-amount-btn" data-amount="10000">+$10k</button>
+          <button type="button" class="quick-amount-btn" data-amount="20000">+$20k</button>
+          <button type="button" class="quick-amount-btn" data-amount="50000">+$50k</button>
         </div>
         <div class="form-row">
           <div class="form-group">
@@ -330,10 +339,6 @@
             <label for="payment-price-per-liter">Precio/litro ($)</label>
             <input type="number" id="payment-price-per-liter" min="1" step="1" placeholder="Ej: 1350">
           </div>
-        </div>
-        <div class="form-group">
-          <label for="payment-amount">Monto total ($)</label>
-          <input type="number" id="payment-amount" min="1" step="0.01" required placeholder="Se calcula auto o ingresalo">
         </div>
         <div class="form-group form-group-checkbox">
           <label class="checkbox-label">

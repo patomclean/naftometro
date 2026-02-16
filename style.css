@@ -614,7 +614,8 @@ input[type="text"],
 input[type="number"],
 select {
   width: 100%;
-  padding: 0.7rem 0.85rem;
+  padding: 0.85rem 0.95rem;
+  min-height: 48px;
   border: 1px solid var(--glass-border);
   border-radius: var(--radius-sm);
   background: rgba(0, 0, 0, 0.3);
@@ -1067,6 +1068,59 @@ select option {
   color: #fff;
   font-size: 0.75rem;
   font-weight: 700;
+}
+
+/* --- Quick Amount Buttons --- */
+.quick-amounts {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+.quick-amount-btn {
+  flex: 1;
+  padding: 0.5rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--glass-border);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-primary);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: var(--font-family);
+  transition: all 0.2s;
+  min-height: 44px;
+}
+.quick-amount-btn:active {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+}
+
+/* --- Clear Pilot Account Button --- */
+.btn-clear-pilot {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.3rem 0.65rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  cursor: pointer;
+  margin-top: 0.4rem;
+  font-family: var(--font-family);
+  transition: all 0.2s;
+}
+.btn-clear-pilot:active {
+  color: var(--color-danger);
+  border-color: var(--color-danger);
+}
+
+/* --- Pilot Color Dot --- */
+.pilot-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
 }
 
 /* --- Utility --- */

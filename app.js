@@ -38,6 +38,8 @@ const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // 3. APPLICATION STATE
 // ============================================================
 
+const PILOT_COLORS = ['#7c5cfc', '#f59e0b', '#06b6d4', '#ec4899', '#10b981', '#f43f5e'];
+
 const state = {
   vehicles: [],
   activeVehicleId: null,
@@ -399,6 +401,24 @@ async function deleteTripsForVehicle(vehicleId) {
   if (error) throw error;
 }
 
+async function deleteTripsForDriver(vehicleId, driver) {
+  const { error } = await db
+    .from('trips')
+    .delete()
+    .eq('vehicle_id', vehicleId)
+    .eq('driver', driver);
+  if (error) throw error;
+}
+
+async function deletePaymentsForDriver(vehicleId, driver) {
+  const { error } = await db
+    .from('payments')
+    .delete()
+    .eq('vehicle_id', vehicleId)
+    .eq('driver', driver);
+  if (error) throw error;
+}
+
 async function recalculateTrips(vehicleId, consumption, fuelPrice) {
   const { data: trips, error: fetchErr } = await db
     .from('trips')
@@ -608,6 +628,8 @@ function renderDriverSelect(drivers) {
 
 function renderTrips() {
   const trips = state.trips;
+  const vehicle = getActiveVehicle();
+  const vehicleDrivers = vehicle ? (vehicle.drivers || []) : [];
 
   toggleHidden(dom.tripsLoading, true);
 
@@ -633,10 +655,12 @@ function renderTrips() {
       dom.tripsTbody.appendChild(groupRow);
     }
 
+    const driverIdx = vehicleDrivers.indexOf(trip.driver);
+    const pilotColor = PILOT_COLORS[driverIdx >= 0 ? driverIdx % PILOT_COLORS.length : 0];
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td data-label="Fecha ">${formatDate(trip.created_at)}</td>
-      <td data-label="Conductor ">${trip.driver}</td>
+      <td data-label="Piloto " style="color:${pilotColor};font-weight:600">${trip.driver}</td>
       <td data-label="Km ">${Number(trip.km).toLocaleString('es-AR')}</td>
       <td data-label="Litros ">${Number(trip.liters).toFixed(2)}</td>
       <td data-label="Costo "><strong>${formatCurrency(trip.cost)}</strong></td>
@@ -712,25 +736,35 @@ function renderBalances() {
   dom.balancesGrid.innerHTML = '';
   const balances = [];
 
-  drivers.forEach((driver) => {
+  drivers.forEach((driver, idx) => {
     const credit = credits[driver];
     const debit = debits[driver];
-    const net = +(credit - debit).toFixed(2); // Balance = Aportes - Consumos
+    const net = +(credit - debit).toFixed(2);
     balances.push({ driver, net });
+    const pilotColor = PILOT_COLORS[idx % PILOT_COLORS.length];
 
     const card = document.createElement('div');
     card.className = 'balance-card';
+    card.style.borderLeft = `3px solid ${pilotColor}`;
     const isPositive = net > 0;
     const isZero = Math.abs(net) < 0.01;
+    const hasActivity = credit > 0 || debit > 0;
     card.innerHTML = `
-      <div class="driver-name">${driver}</div>
+      <div class="driver-name" style="color:${pilotColor}">${driver}</div>
       <div class="balance-amount ${isZero ? 'clear' : isPositive ? 'clear' : 'debt'}">
         ${isZero ? 'Al dia' : (isPositive ? '+' : '') + formatCurrency(net)}
       </div>
       <div class="balance-detail">Aportes: ${formatCurrency(credit)} · Consumo: ${formatCurrency(debit)}</div>
       ${isZero ? '<span class="badge-clear">Saldado</span>' :
         isPositive ? '<span class="badge-clear">A favor</span>' : ''}
+      ${hasActivity ? `<button class="btn-clear-pilot" data-driver="${driver}">Limpiar mi cuenta</button>` : ''}
     `;
+
+    const clearBtn = card.querySelector('.btn-clear-pilot');
+    if (clearBtn) {
+      clearBtn.addEventListener('click', () => handleClearPilotAccount(driver));
+    }
+
     dom.balancesGrid.appendChild(card);
   });
 
@@ -780,6 +814,8 @@ function renderClearing(balances) {
 
 function renderPaymentHistory() {
   const payments = state.payments;
+  const vehicle = getActiveVehicle();
+  const vehicleDrivers = vehicle ? (vehicle.drivers || []) : [];
   dom.paymentsList.innerHTML = '';
 
   if (payments.length === 0) {
@@ -792,6 +828,8 @@ function renderPaymentHistory() {
   payments.forEach((p) => {
     const item = document.createElement('div');
     item.className = 'payment-item';
+    const driverIdx = vehicleDrivers.indexOf(p.driver);
+    const dotColor = PILOT_COLORS[driverIdx >= 0 ? driverIdx % PILOT_COLORS.length : 0];
     const extraInfo = [];
     if (p.liters_loaded) extraInfo.push(`${p.liters_loaded} lts`);
     if (p.price_per_liter) extraInfo.push(`${formatCurrency(p.price_per_liter)}/l`);
@@ -800,6 +838,7 @@ function renderPaymentHistory() {
     if (p.note) metaParts.push(p.note);
 
     item.innerHTML = `
+      <div class="pilot-dot" style="background:${dotColor}"></div>
       <div class="payment-info">
         <div class="payment-driver">${p.driver}</div>
         <div class="payment-meta">${metaParts.join(' · ')}</div>
@@ -1252,6 +1291,47 @@ function handleClearTripsClick() {
   toggleHidden(dom.confirmModal, false);
 }
 
+// --- Clear Pilot Account ---
+
+function handleClearPilotAccount(driver) {
+  dom.confirmTitle.textContent = 'Limpiar cuenta';
+  dom.confirmMessage.textContent =
+    `¿Eliminar TODOS los viajes y cargas de ${driver} en este vehiculo? Esta accion no se puede deshacer.`;
+
+  const btnText = dom.btnConfirmOk.querySelector('.btn-text');
+  if (btnText) btnText.textContent = 'Limpiar';
+
+  state.confirmAction = async () => {
+    const btn = dom.btnConfirmOk;
+    setButtonLoading(btn, true);
+    try {
+      await deleteTripsForDriver(state.activeVehicleId, driver);
+      await deletePaymentsForDriver(state.activeVehicleId, driver);
+      showToast(`Cuenta de ${driver} limpiada`);
+      haptic();
+      const [trips, payments] = await Promise.all([
+        fetchTrips(state.activeVehicleId),
+        fetchPayments(state.activeVehicleId),
+      ]);
+      state.trips = trips;
+      state.payments = payments;
+      state.dashboardLoaded = false;
+      renderTrips();
+      renderSummary();
+      renderBalances();
+      renderPaymentHistory();
+      toggleHidden(dom.confirmModal, true);
+    } catch (err) {
+      showToast('Error: ' + err.message, 'error');
+    } finally {
+      setButtonLoading(btn, false);
+      if (btnText) btnText.textContent = 'Eliminar';
+    }
+  };
+
+  toggleHidden(dom.confirmModal, false);
+}
+
 // --- Payment Modal ---
 
 function openPaymentModal() {
@@ -1285,7 +1365,7 @@ async function handlePaymentSubmit(e) {
 
   const driver = dom.paymentDriver.value;
   if (!driver) {
-    showToast('Selecciona un hermano', 'error');
+    showToast('Selecciona un piloto', 'error');
     setButtonLoading(btn, false);
     return;
   }
@@ -1476,7 +1556,7 @@ async function handleTripSubmit(e) {
 
   const driver = dom.tripDriver.value;
   if (!driver) {
-    showToast('Selecciona un conductor', 'error');
+    showToast('Selecciona un piloto', 'error');
     return;
   }
 
@@ -1691,16 +1771,47 @@ function bindEvents() {
   });
   dom.paymentForm.addEventListener('submit', handlePaymentSubmit);
 
-  // Auto-calc fuel load amount
-  const autoCalcFuelAmount = () => {
+  // Smart auto-calc: bidirectional
+  dom.paymentLiters.addEventListener('input', () => {
     const liters = parseFloat(dom.paymentLiters.value);
     const ppl = parseFloat(dom.paymentPricePerLiter.value);
+    const amount = parseFloat(dom.paymentAmount.value);
     if (liters > 0 && ppl > 0) {
       dom.paymentAmount.value = (liters * ppl).toFixed(2);
+    } else if (liters > 0 && amount > 0) {
+      dom.paymentPricePerLiter.value = Math.round(amount / liters);
     }
-  };
-  dom.paymentLiters.addEventListener('input', autoCalcFuelAmount);
-  dom.paymentPricePerLiter.addEventListener('input', autoCalcFuelAmount);
+  });
+  dom.paymentPricePerLiter.addEventListener('input', () => {
+    const liters = parseFloat(dom.paymentLiters.value);
+    const ppl = parseFloat(dom.paymentPricePerLiter.value);
+    const amount = parseFloat(dom.paymentAmount.value);
+    if (ppl > 0 && liters > 0) {
+      dom.paymentAmount.value = (liters * ppl).toFixed(2);
+    } else if (ppl > 0 && amount > 0) {
+      dom.paymentLiters.value = (amount / ppl).toFixed(1);
+    }
+  });
+  dom.paymentAmount.addEventListener('input', () => {
+    const amount = parseFloat(dom.paymentAmount.value);
+    const liters = parseFloat(dom.paymentLiters.value);
+    const ppl = parseFloat(dom.paymentPricePerLiter.value);
+    if (amount > 0 && liters > 0 && !ppl) {
+      dom.paymentPricePerLiter.value = Math.round(amount / liters);
+    } else if (amount > 0 && ppl > 0 && !liters) {
+      dom.paymentLiters.value = (amount / ppl).toFixed(1);
+    }
+  });
+
+  // Quick amount buttons
+  document.querySelectorAll('.quick-amount-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const current = parseFloat(dom.paymentAmount.value) || 0;
+      dom.paymentAmount.value = (current + parseInt(btn.dataset.amount)).toFixed(2);
+      dom.paymentAmount.dispatchEvent(new Event('input'));
+      haptic();
+    });
+  });
 
   // Trip form
   dom.tripForm.addEventListener('submit', handleTripSubmit);
