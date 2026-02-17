@@ -437,6 +437,22 @@ async function fetchLastTrips(vehicleIds) {
   return lastTrips;
 }
 
+async function fetchLatestFuelPrices(vehicleIds) {
+  if (vehicleIds.length === 0) return {};
+  const { data, error } = await db
+    .from('payments')
+    .select('vehicle_id, price_per_liter')
+    .in('vehicle_id', vehicleIds)
+    .gt('price_per_liter', 0)
+    .order('created_at', { ascending: false });
+  if (error) return {};
+  const prices = {};
+  data.forEach((p) => {
+    if (!prices[p.vehicle_id]) prices[p.vehicle_id] = p.price_per_liter;
+  });
+  return prices;
+}
+
 // --- Payments CRUD ---
 
 async function fetchPayments(vehicleId) {
@@ -503,12 +519,16 @@ async function renderVehicleCards() {
   toggleHidden(dom.noVehiclesMsg, true);
 
   const vehicleIds = state.vehicles.map((v) => v.id);
-  const lastTrips = await fetchLastTrips(vehicleIds);
+  const [lastTrips, latestPrices] = await Promise.all([
+    fetchLastTrips(vehicleIds),
+    fetchLatestFuelPrices(vehicleIds),
+  ]);
 
   state.vehicles.forEach((v, index) => {
     const drivers = v.drivers || [];
     const lastTrip = lastTrips[v.id];
-    const costPerKm = v.fuel_price / v.consumption;
+    const fuelPrice = latestPrices[v.id] || v.fuel_price;
+    const costPerKm = fuelPrice / v.consumption;
     const isLastVisited = v.id === state.lastVisitedVehicleId;
 
     const card = document.createElement('div');
@@ -525,7 +545,7 @@ async function renderVehicleCards() {
       <div class="vehicle-card-badges">
         <span class="badge">${v.consumption} km/l</span>
         <span class="badge">${v.fuel_type}</span>
-        <span class="badge badge-highlight">${formatCurrency(v.fuel_price)}/l</span>
+        <span class="badge badge-highlight">${formatCurrency(fuelPrice)}/l</span>
         <span class="badge badge-highlight">${formatCurrency(costPerKm)}/km</span>
       </div>
       <div class="vehicle-card-footer">
@@ -585,9 +605,10 @@ function renderVehicleDetail() {
   dom.vehicleModelBadge.textContent = vehicle.model;
   dom.vehicleConsumptionBadge.textContent = vehicle.consumption + ' km/l';
   dom.vehicleFuelTypeBadge.textContent = vehicle.fuel_type;
-  dom.vehicleFuelPriceBadge.textContent = formatCurrency(vehicle.fuel_price) + '/l';
+  const latestPrice = getLatestFuelPrice(vehicle);
+  dom.vehicleFuelPriceBadge.textContent = formatCurrency(latestPrice) + '/l';
 
-  const costPerKm = vehicle.fuel_price / vehicle.consumption;
+  const costPerKm = latestPrice / vehicle.consumption;
   dom.vehicleCostKmBadge.textContent = formatCurrency(costPerKm) + '/km';
 
   renderDriverSelect(vehicle.drivers || []);
@@ -1888,35 +1909,32 @@ function bindEvents() {
   });
   dom.paymentForm.addEventListener('submit', handlePaymentSubmit);
 
-  // Smart auto-calc: bidirectional
+  // Smart auto-calc: Monto Total is the anchor (never auto-recalculated)
+  // Liters change → recalc price/liter (amount stays)
   dom.paymentLiters.addEventListener('input', () => {
     const liters = parseFloat(dom.paymentLiters.value);
-    const ppl = parseFloat(dom.paymentPricePerLiter.value);
     const amount = parseFloat(dom.paymentAmount.value);
-    if (liters > 0 && ppl > 0) {
-      dom.paymentAmount.value = (liters * ppl).toFixed(2);
-    } else if (liters > 0 && amount > 0) {
+    if (liters > 0 && amount > 0) {
       dom.paymentPricePerLiter.value = Math.round(amount / liters);
     }
   });
+  // Price/liter change → recalc liters (amount stays)
   dom.paymentPricePerLiter.addEventListener('input', () => {
-    const liters = parseFloat(dom.paymentLiters.value);
     const ppl = parseFloat(dom.paymentPricePerLiter.value);
     const amount = parseFloat(dom.paymentAmount.value);
-    if (ppl > 0 && liters > 0) {
-      dom.paymentAmount.value = (liters * ppl).toFixed(2);
-    } else if (ppl > 0 && amount > 0) {
+    if (ppl > 0 && amount > 0) {
       dom.paymentLiters.value = (amount / ppl).toFixed(1);
     }
   });
+  // Amount change → recalc liters if price exists, else recalc price if liters exist
   dom.paymentAmount.addEventListener('input', () => {
     const amount = parseFloat(dom.paymentAmount.value);
     const liters = parseFloat(dom.paymentLiters.value);
     const ppl = parseFloat(dom.paymentPricePerLiter.value);
-    if (amount > 0 && liters > 0 && !ppl) {
-      dom.paymentPricePerLiter.value = Math.round(amount / liters);
-    } else if (amount > 0 && ppl > 0 && !liters) {
+    if (amount > 0 && ppl > 0) {
       dom.paymentLiters.value = (amount / ppl).toFixed(1);
+    } else if (amount > 0 && liters > 0) {
+      dom.paymentPricePerLiter.value = Math.round(amount / liters);
     }
   });
 
