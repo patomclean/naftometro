@@ -82,6 +82,16 @@
                 <label for="trip-note">Nota (opcional)</label>
                 <input type="text" id="trip-note" maxlength="100" placeholder="Ej: Ida al trabajo">
               </div>
+              <!-- v13: Drive type selector -->
+              <div class="form-group">
+                <label>Tipo de manejo</label>
+                <div class="drive-type-selector" id="drive-type-selector">
+                  <button type="button" class="drive-type-btn" data-type="Urbano">🏙️ Urbano</button>
+                  <button type="button" class="drive-type-btn drive-type-btn--active" data-type="Mixto">🛣️ Mixto</button>
+                  <button type="button" class="drive-type-btn" data-type="Ruta">🏁 Ruta</button>
+                </div>
+                <input type="hidden" id="trip-drive-type" value="Mixto">
+              </div>
               <div class="cost-preview" id="cost-preview">
                 <span>Costo estimado:</span>
                 <strong id="cost-preview-value">$0,00</strong>
@@ -150,6 +160,7 @@
                     <th>Km</th>
                     <th>Litros</th>
                     <th>Costo</th>
+                    <th></th>
                     <th>Nota</th>
                     <th></th>
                   </tr>

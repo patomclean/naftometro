@@ -5,19 +5,43 @@
 const SUPABASE_URL = 'https://vablrtbwxitoiqyzyama.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZhYmxydGJ3eGl0b2lxeXp5YW1hIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA4NTkyOTAsImV4cCI6MjA4NjQzNTI5MH0.IK2tbR_QIwYDaBmYy1WPNai5o5BHGq_f8K6FQOft_ww';
 
-const VEHICLE_MODELS = {
-  'VW Gol Trend 1.6': 12.5,
-  'Toyota Corolla 1.8': 13.0,
-  'Ford Ka 1.5': 14.0,
-  'Fiat Cronos 1.3': 13.5,
-  'Chevrolet Onix 1.0T': 15.0,
-  'Renault Sandero 1.6': 12.0,
-  'Toyota Hilux 2.8 TD': 8.5,
-  'Ford Ranger 3.2 TD': 8.0,
-  'VW Amarok 2.0 TD': 9.0,
-  'Peugeot 208 1.6': 13.5,
-  'VW Taos 1.4 250 TSI': 12.0,
+// v13: Rich vehicle database with official specs (tank capacity, consumption by drive type)
+const VEHICLE_DATABASE = {
+  'VW Gol Trend 1.6':        { tank: 55, city_km_l: 10.5, mixed_km_l: 12.5, highway_km_l: 15.0 },
+  'Toyota Corolla 1.8':      { tank: 60, city_km_l: 10.8, mixed_km_l: 13.0, highway_km_l: 15.5 },
+  'Ford Ka 1.5':             { tank: 48, city_km_l: 12.0, mixed_km_l: 14.0, highway_km_l: 16.5 },
+  'Fiat Cronos 1.3':         { tank: 48, city_km_l: 11.5, mixed_km_l: 13.5, highway_km_l: 15.5 },
+  'Fiat Cronos 1.3 Drive':   { tank: 48, city_km_l: 12.6, mixed_km_l: 14.0, highway_km_l: 15.8 },
+  'Chevrolet Onix 1.0T':     { tank: 40, city_km_l: 12.5, mixed_km_l: 15.0, highway_km_l: 17.5 },
+  'Renault Sandero 1.6':     { tank: 50, city_km_l: 10.0, mixed_km_l: 12.0, highway_km_l: 14.5 },
+  'Toyota Hilux 2.8 TD':     { tank: 80, city_km_l:  6.5, mixed_km_l:  8.5, highway_km_l: 11.0 },
+  'Ford Ranger 3.2 TD':      { tank: 80, city_km_l:  6.0, mixed_km_l:  8.0, highway_km_l: 10.5 },
+  'VW Amarok 2.0 TD':        { tank: 80, city_km_l:  7.0, mixed_km_l:  9.0, highway_km_l: 11.5 },
+  'Peugeot 208 1.6':         { tank: 50, city_km_l: 11.0, mixed_km_l: 13.5, highway_km_l: 16.0 },
+  'VW Taos 1.4 250 TSI':     { tank: 50, city_km_l: 10.1, mixed_km_l: 13.3, highway_km_l: 16.6 },
+  'Toyota Corolla 2.0 SEG':  { tank: 50, city_km_l: 11.1, mixed_km_l: 14.5, highway_km_l: 17.7 },
 };
+
+function getVehicleTankCapacity(vehicle) {
+  const spec = VEHICLE_DATABASE[vehicle.model];
+  return spec ? spec.tank : null;
+}
+
+function getConsumptionForDriveType(vehicle, driveType) {
+  const spec = VEHICLE_DATABASE[vehicle.model];
+  if (spec) {
+    if (driveType === 'Urbano') return spec.city_km_l;
+    if (driveType === 'Ruta')   return spec.highway_km_l;
+    return spec.mixed_km_l;
+  }
+  return vehicle.consumption;
+}
+
+function getDriveTypeEmoji(driveType) {
+  if (driveType === 'Urbano') return '🏙️';
+  if (driveType === 'Ruta')   return '🏁';
+  return '🛣️';
+}
 
 const FUEL_TYPES = [
   'Super (95 octanos)',
@@ -103,6 +127,9 @@ const dom = {
   tripsEmpty: $('#trips-empty'),
   tripsTable: $('#trips-table'),
   tripsTbody: $('#trips-tbody'),
+  // v13: Drive type selector
+  tripDriveType: $('#trip-drive-type'),
+  driveTypeSelector: $('#drive-type-selector'),
   // Modals
   vehicleModal: $('#vehicle-modal'),
   modalTitle: $('#modal-title'),
@@ -529,7 +556,8 @@ async function deleteTripsForVehicle(vehicleId) {
   if (error) throw error;
 }
 
-async function recalculateTrips(vehicleId, consumption, fuelPrice) {
+// v13: Drive-type aware recalculation
+async function recalculateTrips(vehicleId, vehiclePayload) {
   const { data: trips, error: fetchErr } = await db
     .from('trips')
     .select('*')
@@ -537,7 +565,9 @@ async function recalculateTrips(vehicleId, consumption, fuelPrice) {
   if (fetchErr) throw fetchErr;
 
   for (const trip of trips) {
-    const { liters, cost } = calculateCost(trip.km, consumption, fuelPrice);
+    const driveType = trip.drive_type || 'Mixto';
+    const consumption = getConsumptionForDriveType(vehiclePayload, driveType);
+    const { liters, cost } = calculateCost(trip.km, consumption, vehiclePayload.fuel_price);
     const { error } = await db
       .from('trips')
       .update({ liters, cost })
@@ -732,23 +762,35 @@ function renderVehicleDetail() {
 
   dom.detailTitle.textContent = vehicle.name;
   dom.vehicleModelBadge.textContent = vehicle.model;
-  dom.vehicleConsumptionBadge.textContent = vehicle.consumption + ' km/l';
+  // v13: Show consumption by drive type if known model
+  const spec = VEHICLE_DATABASE[vehicle.model];
+  if (spec) {
+    dom.vehicleConsumptionBadge.textContent =
+      `🏙️${spec.city_km_l} · 🛣️${spec.mixed_km_l} · 🏁${spec.highway_km_l} km/l`;
+  } else {
+    dom.vehicleConsumptionBadge.textContent = vehicle.consumption + ' km/l';
+  }
   dom.vehicleFuelTypeBadge.textContent = vehicle.fuel_type;
   const latestPrice = getLatestFuelPrice(vehicle);
   dom.vehicleFuelPriceBadge.textContent = formatCurrency(latestPrice) + '/l';
 
-  const costPerKm = latestPrice / vehicle.consumption;
+  const mixedConsumption = spec ? spec.mixed_km_l : vehicle.consumption;
+  const costPerKm = latestPrice / mixedConsumption;
   dom.vehicleCostKmBadge.textContent = formatCurrency(costPerKm) + '/km';
 
-  // v11: Indicador de tanque virtual
+  // v13: Tank indicator with real capacity
   const tankLevel = calculateTankLevel();
-  if (tankLevel > 0 && state.payments.length > 0) {
-    const loads = state.payments.filter(p => p.liters_loaded > 0).map(p => Number(p.liters_loaded));
-    const maxLoad = loads.length > 0 ? Math.max(...loads) : 50;
-    const tankPercent = Math.min((tankLevel / maxLoad) * 100, 100);
+  const loads = state.payments.filter(p => p.liters_loaded > 0).map(p => Number(p.liters_loaded));
+  const tankCap = getVehicleTankCapacity(vehicle);
+  const effectiveCap = tankCap || (loads.length > 0 ? Math.max(...loads) : 50);
+
+  if (state.payments.length > 0) {
+    const tankPercent = Math.min(Math.max((tankLevel / effectiveCap) * 100, 0), 100);
     dom.tankBarFill.style.width = tankPercent + '%';
     dom.tankBarFill.className = 'tank-bar-fill' + (tankPercent < 20 ? ' tank-low' : '');
-    dom.tankLitersLabel.textContent = `${tankLevel.toFixed(1)} lts`;
+    dom.tankLitersLabel.textContent = tankCap
+      ? `${tankLevel.toFixed(1)} / ${tankCap} lts`
+      : `${tankLevel.toFixed(1)} lts`;
     dom.tankPriceLabel.textContent = `Precio Prom: ${formatCurrency(latestPrice)}/l`;
     toggleHidden(dom.tankIndicator, false);
   } else {
@@ -802,7 +844,7 @@ function renderTrips() {
     if (group !== currentGroup) {
       currentGroup = group;
       const groupRow = document.createElement('tr');
-      groupRow.innerHTML = `<td colspan="7" class="trip-date-group">${group}</td>`;
+      groupRow.innerHTML = `<td colspan="8" class="trip-date-group">${group}</td>`;
       dom.tripsTbody.appendChild(groupRow);
     }
 
@@ -815,6 +857,7 @@ function renderTrips() {
       <td data-label="Km ">${Number(trip.km).toLocaleString('es-AR')}</td>
       <td data-label="Litros ">${Number(trip.liters).toFixed(2)}</td>
       <td data-label="Costo "><strong>${formatCurrency(trip.cost)}</strong></td>
+      <td data-label="Tipo ">${getDriveTypeEmoji(trip.drive_type)}</td>
       <td data-label="Nota " class="trip-note" title="${trip.note || ''}">${trip.note || '-'}</td>
       <td></td>
     `;
@@ -1127,10 +1170,11 @@ function showPaymentBreakdown(payment) {
 }
 
 function populateFormOptions() {
-  Object.keys(VEHICLE_MODELS).forEach((model) => {
+  Object.keys(VEHICLE_DATABASE).forEach((model) => {
+    const spec = VEHICLE_DATABASE[model];
     const opt = document.createElement('option');
     opt.value = model;
-    opt.textContent = model + ' (' + VEHICLE_MODELS[model] + ' km/l)';
+    opt.textContent = `${model} (${spec.mixed_km_l} km/l · ${spec.tank}L)`;
     dom.vehicleModelSelect.appendChild(opt);
   });
 
@@ -1545,7 +1589,7 @@ async function handleVehicleSubmit(e) {
       if (oldVehicle &&
         (oldVehicle.fuel_price !== payload.fuel_price ||
           oldVehicle.consumption !== payload.consumption)) {
-        await recalculateTrips(editId, payload.consumption, payload.fuel_price);
+        await recalculateTrips(editId, payload);
       }
 
       showToast('Vehiculo actualizado');
@@ -1779,6 +1823,13 @@ function openTripEditModal(trip) {
   dom.tripDriver.value = trip.driver;
   dom.tripKm.value = trip.km;
   dom.tripNote.value = trip.note || '';
+  // v13: Restore drive type
+  const savedType = trip.drive_type || 'Mixto';
+  if (dom.tripDriveType) dom.tripDriveType.value = savedType;
+  if (dom.driveTypeSelector) {
+    dom.driveTypeSelector.querySelectorAll('.drive-type-btn').forEach(b =>
+      b.classList.toggle('drive-type-btn--active', b.dataset.type === savedType));
+  }
   handleTripKmInput();
   const btnText = dom.btnSubmitTrip.querySelector('.btn-text');
   if (btnText) btnText.textContent = 'Guardar cambios';
@@ -2017,7 +2068,9 @@ function handleTripKmInput() {
   const vehicle = getActiveVehicle();
   const km = parseFloat(dom.tripKm.value) || 0;
   if (vehicle && km > 0) {
-    const { cost } = calculateCost(km, vehicle.consumption, getLatestFuelPrice(vehicle));
+    const driveType = dom.tripDriveType ? dom.tripDriveType.value : 'Mixto';
+    const consumption = getConsumptionForDriveType(vehicle, driveType);
+    const { cost } = calculateCost(km, consumption, getLatestFuelPrice(vehicle));
     dom.costPreviewValue.textContent = formatCurrency(cost);
   } else {
     dom.costPreviewValue.textContent = '$0,00';
@@ -2041,7 +2094,10 @@ async function handleTripSubmit(e) {
     return;
   }
 
-  const { liters, cost } = calculateCost(km, vehicle.consumption, getLatestFuelPrice(vehicle));
+  // v13: Drive type selection
+  const driveType = dom.tripDriveType ? dom.tripDriveType.value : 'Mixto';
+  const consumption = getConsumptionForDriveType(vehicle, driveType);
+  const { liters, cost } = calculateCost(km, consumption, getLatestFuelPrice(vehicle));
 
   // v11: Verificar tanque virtual
   const tankLevel = calculateTankLevel();
@@ -2061,6 +2117,7 @@ async function handleTripSubmit(e) {
         note: dom.tripNote.value.trim() || null,
         liters,
         cost,
+        drive_type: driveType,
       });
       showToast('Viaje actualizado');
       state.editingTripId = null;
@@ -2074,12 +2131,17 @@ async function handleTripSubmit(e) {
         note: dom.tripNote.value.trim() || null,
         liters,
         cost,
+        drive_type: driveType,
       });
       showToast('Viaje registrado');
     }
     haptic();
     dom.tripForm.reset();
     dom.costPreviewValue.textContent = '$0,00';
+    // v13: Reset drive type selector
+    dom.tripDriveType.value = 'Mixto';
+    dom.driveTypeSelector.querySelectorAll('.drive-type-btn').forEach(b =>
+      b.classList.toggle('drive-type-btn--active', b.dataset.type === 'Mixto'));
     state.trips = await fetchTrips(state.activeVehicleId);
     state.dashboardLoaded = false;
     renderTrips();
@@ -2114,8 +2176,9 @@ async function handleDeleteTrip(tripId) {
 
 function handleModelChange() {
   const model = dom.vehicleModelSelect.value;
-  if (model && VEHICLE_MODELS[model] != null) {
-    dom.vehicleConsumptionInput.value = VEHICLE_MODELS[model];
+  const spec = VEHICLE_DATABASE[model];
+  if (spec) {
+    dom.vehicleConsumptionInput.value = spec.mixed_km_l;
   } else {
     dom.vehicleConsumptionInput.value = '';
   }
@@ -2157,7 +2220,12 @@ function generateSummaryText() {
   }
 
   let text = `Hola! Les comparto la liquidacion de *${vehicle.name}*\n\n`;
-  text += `Consumo total: *${formatCurrency(totalConsumo)}* en ${state.trips.length} viaje${state.trips.length !== 1 ? 's' : ''}\n\n`;
+  text += `Consumo total: *${formatCurrency(totalConsumo)}* en ${state.trips.length} viaje${state.trips.length !== 1 ? 's' : ''}\n`;
+  // v13: Liter consumption line
+  const totalLiters = state.trips.reduce((sum, t) => sum + Number(t.liters || 0), 0);
+  const tankCap = getVehicleTankCapacity(vehicle);
+  const tankPct = tankCap > 0 ? ` (${Math.round((totalLiters / tankCap) * 100)}% del tanque)` : '';
+  text += `Combustible consumido: *${totalLiters.toFixed(1)} litros*${tankPct}\n\n`;
 
   text += `Saldos:\n`;
   balances.forEach((b) => {
@@ -2348,6 +2416,17 @@ function bindEvents() {
   // Trip form
   dom.tripForm.addEventListener('submit', handleTripSubmit);
   dom.tripKm.addEventListener('input', handleTripKmInput);
+
+  // v13: Drive type selector
+  dom.driveTypeSelector.addEventListener('click', (e) => {
+    const btn = e.target.closest('.drive-type-btn');
+    if (!btn) return;
+    dom.driveTypeSelector.querySelectorAll('.drive-type-btn').forEach(b =>
+      b.classList.remove('drive-type-btn--active'));
+    btn.classList.add('drive-type-btn--active');
+    dom.tripDriveType.value = btn.dataset.type;
+    handleTripKmInput();
+  });
 
   dom.tripKm.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') {
