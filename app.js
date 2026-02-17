@@ -135,6 +135,11 @@ const dom = {
   summaryPumpPrice: $('#summary-pump-price'),
   summaryEffectivePrice: $('#summary-effective-price'),
   summaryPerceptionNote: $('#summary-perception-note'),
+  // v11: Tank indicator DOM refs
+  tankIndicator: $('#tank-indicator'),
+  tankBarFill: $('#tank-bar-fill'),
+  tankLitersLabel: $('#tank-liters-label'),
+  tankPriceLabel: $('#tank-price-label'),
   confirmModal: $('#confirm-modal'),
   confirmTitle: $('#confirm-title'),
   confirmMessage: $('#confirm-message'),
@@ -247,6 +252,27 @@ function calculateFiscalBreakdown(amount, liters, isFacturaA, discount) {
   }
 
   return result;
+}
+
+// v11: Calculate virtual tank level from payments and trips
+function calculateTankLevel() {
+  let litersIn = 0;
+  state.payments.forEach(p => {
+    if (p.liters_loaded > 0) litersIn += Number(p.liters_loaded);
+  });
+  let litersOut = 0;
+  state.trips.forEach(t => {
+    if (t.liters > 0) litersOut += Number(t.liters);
+  });
+  return +(litersIn - litersOut).toFixed(2);
+}
+
+// v11: Calculate weighted average price when adding fuel
+function calculateWeightedPrice(tankLiters, currentPrice, newAmount, newLiters) {
+  const effectiveTank = Math.max(tankLiters, 0);
+  const totalLiters = effectiveTank + newLiters;
+  if (totalLiters <= 0) return currentPrice;
+  return +((effectiveTank * currentPrice + newAmount) / totalLiters).toFixed(2);
 }
 
 // v10: Update the dynamic price summary in payment modal
@@ -701,6 +727,21 @@ function renderVehicleDetail() {
 
   const costPerKm = latestPrice / vehicle.consumption;
   dom.vehicleCostKmBadge.textContent = formatCurrency(costPerKm) + '/km';
+
+  // v11: Indicador de tanque virtual
+  const tankLevel = calculateTankLevel();
+  if (tankLevel > 0 && state.payments.length > 0) {
+    const loads = state.payments.filter(p => p.liters_loaded > 0).map(p => Number(p.liters_loaded));
+    const maxLoad = loads.length > 0 ? Math.max(...loads) : 50;
+    const tankPercent = Math.min((tankLevel / maxLoad) * 100, 100);
+    dom.tankBarFill.style.width = tankPercent + '%';
+    dom.tankBarFill.className = 'tank-bar-fill' + (tankPercent < 20 ? ' tank-low' : '');
+    dom.tankLitersLabel.textContent = `${tankLevel.toFixed(1)} lts`;
+    dom.tankPriceLabel.textContent = `Precio Prom: ${formatCurrency(latestPrice)}/l`;
+    toggleHidden(dom.tankIndicator, false);
+  } else {
+    toggleHidden(dom.tankIndicator, true);
+  }
 
   renderDriverSelect(vehicle.drivers || []);
 
@@ -1389,6 +1430,7 @@ async function selectVehicle(vehicleId) {
     renderSummary();
     renderBalances();
     renderPaymentHistory();
+    renderVehicleDetail(); // v11: Re-render con datos de tanque
   } catch (err) {
     showToast('Error al cargar datos: ' + err.message, 'error');
     toggleHidden(dom.tripsLoading, true);
@@ -1690,13 +1732,25 @@ async function handlePaymentSubmit(e) {
     return;
   }
 
-  const litersLoaded = parseFloat(dom.paymentLiters.value) || null;
-  const pricePerLiter = parseFloat(dom.paymentPricePerLiter.value) || null;
+  let litersLoaded = parseFloat(dom.paymentLiters.value) || null;
+  let pricePerLiter = parseFloat(dom.paymentPricePerLiter.value) || null;
   const isFullTank = dom.paymentFullTank.checked;
+  const isSettlement = state.settlementMode;
+
+  // v11: Modo Distraído — si no hay litros ni precio, estimar con fuel_price actual
+  const originalLiters = litersLoaded;
+  if (!isSettlement && amount > 0 && !litersLoaded && !pricePerLiter) {
+    const vehicle = getActiveVehicle();
+    const refPrice = getLatestFuelPrice(vehicle);
+    if (refPrice > 0) {
+      litersLoaded = +(amount / refPrice).toFixed(1);
+      pricePerLiter = +refPrice.toFixed(2);
+      dom.paymentLiters.value = litersLoaded;
+      dom.paymentPricePerLiter.value = Math.round(pricePerLiter);
+    }
+  }
 
   try {
-    const isSettlement = state.settlementMode;
-
     // v10: Compute fiscal breakdown
     const isFacturaA = isSettlement ? false : dom.paymentFacturaA.checked;
     const discountAmount = isSettlement ? 0 : (parseFloat(dom.paymentDiscount.value) || 0);
@@ -1726,6 +1780,8 @@ async function handlePaymentSubmit(e) {
 
     if (isSettlement) {
       showToast(`Saldo de ${formatCurrency(amount)} registrado para ${driver}`);
+    } else if (!originalLiters) {
+      showToast(`Carga registrada (${litersLoaded} lts estimados a ${formatCurrency(pricePerLiter)}/l)`);
     } else {
       showToast('Carga registrada');
     }
@@ -1738,16 +1794,21 @@ async function handlePaymentSubmit(e) {
 
     // Solo para cargas reales de combustible (no saldados)
     if (!isSettlement) {
-      // v10: Sincronizar fuel_price con Precio Efectivo (amount/liters)
-      const syncPrice = effectivePrice || pricePerLiter;
-      if (syncPrice && syncPrice > 0) {
+      // v11: Precio Ponderado Dinámico (PPD)
+      if (litersLoaded && litersLoaded > 0) {
         const vehicle = getActiveVehicle();
-        if (vehicle && vehicle.fuel_price !== syncPrice) {
-          await updateVehicle(state.activeVehicleId, { fuel_price: syncPrice });
-          state.vehicles = await fetchVehicles();
-          renderVehicleDetail();
-          renderVehicleCards();
-          showToast(`Precio actualizado: ${formatCurrency(syncPrice)}/l`);
+        if (vehicle) {
+          const tankBefore = calculateTankLevel() - litersLoaded;
+          const currentPrice = getLatestFuelPrice(vehicle);
+          const weightedPrice = calculateWeightedPrice(
+            tankBefore, currentPrice, amount, litersLoaded
+          );
+          if (vehicle.fuel_price !== weightedPrice) {
+            await updateVehicle(state.activeVehicleId, { fuel_price: weightedPrice });
+            state.vehicles = await fetchVehicles();
+            renderVehicleDetail();
+            renderVehicleCards();
+          }
         }
       }
 
@@ -1902,6 +1963,13 @@ async function handleTripSubmit(e) {
   }
 
   const { liters, cost } = calculateCost(km, vehicle.consumption, getLatestFuelPrice(vehicle));
+
+  // v11: Verificar tanque virtual
+  const tankLevel = calculateTankLevel();
+  if (tankLevel <= 0) {
+    showToast('Tanque virtual vacio, usando precio de referencia', 'error');
+  }
+
   const btn = dom.btnSubmitTrip;
   setButtonLoading(btn, true);
 
@@ -1923,6 +1991,7 @@ async function handleTripSubmit(e) {
     renderTrips();
     renderSummary();
     renderBalances();
+    renderVehicleDetail(); // v11: Update tank indicator
   } catch (err) {
     showToast('Error: ' + err.message, 'error');
   } finally {

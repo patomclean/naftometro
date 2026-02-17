@@ -1736,3 +1736,40 @@ h3 {
   min-width: 32px;
   min-height: 32px;
 }
+
+/* ============================================================
+   v11: Tank Indicator
+   ============================================================ */
+
+.tank-indicator {
+  margin-top: 0.75rem;
+  padding-top: 0.65rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.tank-bar-container {
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+  margin-bottom: 0.4rem;
+}
+
+.tank-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  background: var(--color-success);
+  transition: width 0.4s ease;
+  min-width: 2px;
+}
+
+.tank-bar-fill.tank-low {
+  background: var(--color-danger);
+}
+
+.tank-info {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
