@@ -864,11 +864,16 @@ function renderTrips() {
       <td data-label="Piloto " style="color:${pilotColor};font-weight:600">${trip.driver}</td>
       <td data-label="Km ">${Number(trip.km).toLocaleString('es-AR')}</td>
       <td data-label="Litros ">${Number(trip.liters).toFixed(2)}</td>
-      <td data-label="Costo "><strong>${formatCurrency(trip.cost)}</strong>${trip.is_reconciled ? '<span class="badge-reconciled" title="Costo ajustado por reconciliación">⚖️</span>' : ''}</td>
+      <td data-label="Costo "><strong>${formatCurrency(trip.cost)}</strong>${trip.is_reconciled ? '<span class="badge-reconciled" title="Costo ajustado por reconciliación">RECONCILIADO</span>' : ''}</td>
       <td data-label="Tipo ">${getDriveTypeEmoji(trip.drive_type)}</td>
       <td data-label="Nota " class="trip-note" title="${trip.note || ''}">${trip.note || '-'}</td>
       <td></td>
     `;
+    // v14.2: Reconciliation badge click handler
+    const reconBadge = tr.querySelector('.badge-reconciled');
+    if (reconBadge) {
+      reconBadge.addEventListener('click', () => showReconciliationBreakdown(trip));
+    }
     // v12: Edit button for trips
     const editBtn = document.createElement('button');
     editBtn.className = 'btn-icon btn-icon-edit';
@@ -1166,6 +1171,50 @@ function showPaymentBreakdown(payment) {
 
   popup.querySelector('#breakdown-close-btn').addEventListener('click', () => popup.remove());
 
+  setTimeout(() => {
+    const handler = (e) => {
+      if (!popup.contains(e.target)) {
+        popup.remove();
+        document.removeEventListener('click', handler);
+      }
+    };
+    document.addEventListener('click', handler);
+  }, 100);
+}
+
+// v14.2: Show reconciliation breakdown popup
+function showReconciliationBreakdown(trip) {
+  const existing = document.querySelector('.payment-breakdown-popup');
+  if (existing) existing.remove();
+
+  const popup = document.createElement('div');
+  popup.className = 'payment-breakdown-popup';
+
+  const reconDate = trip.reconciled_at ? formatDate(trip.reconciled_at) : '—';
+  const origConsumption = trip.original_consumption ? Number(trip.original_consumption).toFixed(1) : '—';
+  const realConsumption = trip.real_consumption ? Number(trip.real_consumption).toFixed(1) : '—';
+
+  popup.innerHTML = `
+    <button class="breakdown-close" id="breakdown-close-btn">&times;</button>
+    <div class="breakdown-row" style="font-weight:600;margin-bottom:0.5rem">
+      ⚖️ Reconciliación de Viaje
+    </div>
+    <div class="breakdown-row">
+      <span>Consumo estimado:</span>
+      <strong>${origConsumption} km/l</strong>
+    </div>
+    <div class="breakdown-row">
+      <span>Consumo real:</span>
+      <strong>${realConsumption} km/l</strong>
+    </div>
+    <div class="breakdown-row total-row">
+      <span>Ajustado el:</span>
+      <strong>${reconDate}</strong>
+    </div>
+  `;
+
+  document.body.appendChild(popup);
+  popup.querySelector('#breakdown-close-btn').addEventListener('click', () => popup.remove());
   setTimeout(() => {
     const handler = (e) => {
       if (!popup.contains(e.target)) {
@@ -2011,7 +2060,14 @@ async function performTankAudit() {
     totalNewCost += newCost;
 
     await db.from('trips')
-      .update({ liters: newLiters, cost: newCost, is_reconciled: true })
+      .update({
+        liters: newLiters,
+        cost: newCost,
+        is_reconciled: true,
+        reconciled_at: new Date().toISOString(),
+        original_consumption: getConsumptionForDriveType(vehicle, trip.drive_type),
+        real_consumption: realConsumption,
+      })
       .eq('id', trip.id);
   }
 

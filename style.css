@@ -1808,11 +1808,20 @@ h3 {
   font-weight: 600;
 }
 
-/* --- v14.1: Reconciliation badge --- */
+/* --- v14.2: Reconciliation badge (amber, styled like FACTURA A) --- */
 .badge-reconciled {
-  font-size: 0.7rem;
-  margin-left: 0.25rem;
-  cursor: help;
+  display: inline-block;
+  font-size: 0.6rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding: 0.1rem 0.4rem;
+  border-radius: var(--radius-sm);
+  background: rgba(245, 158, 11, 0.15);
+  color: #f59e0b;
+  vertical-align: middle;
+  margin-left: 0.3rem;
+  cursor: pointer;
 }
 
 /* --- v14.1: Learned consumption badge --- */
