@@ -52,6 +52,8 @@ const state = {
   allTrips: [],
   allPayments: [],
   pendingConsumptionUpdate: null,
+  settlementMode: false,
+  settlementDriver: null,
 };
 
 // ============================================================
@@ -135,6 +137,8 @@ const dom = {
   dashVehicleBreakdown: $('#dash-vehicle-breakdown'),
   dashRecentActivity: $('#dash-recent-activity'),
   dashNoActivity: $('#dash-no-activity'),
+  dashPilotRanking: $('#dash-pilot-ranking'),
+  dashPriceTrend: $('#dash-price-trend'),
 };
 
 // ============================================================
@@ -398,24 +402,6 @@ async function deleteTripsForVehicle(vehicleId) {
     .from('trips')
     .delete()
     .eq('vehicle_id', vehicleId);
-  if (error) throw error;
-}
-
-async function deleteTripsForDriver(vehicleId, driver) {
-  const { error } = await db
-    .from('trips')
-    .delete()
-    .eq('vehicle_id', vehicleId)
-    .eq('driver', driver);
-  if (error) throw error;
-}
-
-async function deletePaymentsForDriver(vehicleId, driver) {
-  const { error } = await db
-    .from('payments')
-    .delete()
-    .eq('vehicle_id', vehicleId)
-    .eq('driver', driver);
   if (error) throw error;
 }
 
@@ -748,7 +734,6 @@ function renderBalances() {
     card.style.borderLeft = `3px solid ${pilotColor}`;
     const isPositive = net > 0;
     const isZero = Math.abs(net) < 0.01;
-    const hasActivity = credit > 0 || debit > 0;
     card.innerHTML = `
       <div class="driver-name" style="color:${pilotColor}">${driver}</div>
       <div class="balance-amount ${isZero ? 'clear' : isPositive ? 'clear' : 'debt'}">
@@ -757,12 +742,12 @@ function renderBalances() {
       <div class="balance-detail">Aportes: ${formatCurrency(credit)} · Consumo: ${formatCurrency(debit)}</div>
       ${isZero ? '<span class="badge-clear">Saldado</span>' :
         isPositive ? '<span class="badge-clear">A favor</span>' : ''}
-      ${hasActivity ? `<button class="btn-clear-pilot" data-driver="${driver}">Limpiar mi cuenta</button>` : ''}
+      ${net < -0.01 ? `<button class="btn-settle-pilot" data-driver="${driver}">Saldar cuenta</button>` : ''}
     `;
 
-    const clearBtn = card.querySelector('.btn-clear-pilot');
-    if (clearBtn) {
-      clearBtn.addEventListener('click', () => handleClearPilotAccount(driver));
+    const settleBtn = card.querySelector('.btn-settle-pilot');
+    if (settleBtn) {
+      settleBtn.addEventListener('click', () => handleClearPilotAccount(driver));
     }
 
     dom.balancesGrid.appendChild(card);
@@ -827,7 +812,8 @@ function renderPaymentHistory() {
 
   payments.forEach((p) => {
     const item = document.createElement('div');
-    item.className = 'payment-item';
+    const isSettlement = p.note && p.note.toLowerCase().includes('saldado') && !p.liters_loaded;
+    item.className = 'payment-item' + (isSettlement ? ' payment-item-settlement' : '');
     const driverIdx = vehicleDrivers.indexOf(p.driver);
     const dotColor = PILOT_COLORS[driverIdx >= 0 ? driverIdx % PILOT_COLORS.length : 0];
     const extraInfo = [];
@@ -837,14 +823,25 @@ function renderPaymentHistory() {
     const metaParts = [formatDate(p.created_at), ...extraInfo];
     if (p.note) metaParts.push(p.note);
 
-    item.innerHTML = `
-      <div class="pilot-dot" style="background:${dotColor}"></div>
-      <div class="payment-info">
-        <div class="payment-driver">${p.driver}</div>
-        <div class="payment-meta">${metaParts.join(' · ')}</div>
-      </div>
-      <span class="payment-amount">${formatCurrency(p.amount)}</span>
-    `;
+    if (isSettlement) {
+      item.innerHTML = `
+        <div class="settlement-icon">&#128181;</div>
+        <div class="payment-info">
+          <div class="payment-driver">${p.driver}</div>
+          <div class="payment-meta">${metaParts.join(' · ')}</div>
+        </div>
+        <span class="payment-amount settlement-amount">${formatCurrency(p.amount)}</span>
+      `;
+    } else {
+      item.innerHTML = `
+        <div class="pilot-dot" style="background:${dotColor}"></div>
+        <div class="payment-info">
+          <div class="payment-driver">${p.driver}</div>
+          <div class="payment-meta">${metaParts.join(' · ')}</div>
+        </div>
+        <span class="payment-amount">${formatCurrency(p.amount)}</span>
+      `;
+    }
 
     const deleteBtn = document.createElement('button');
     deleteBtn.className = 'btn-icon btn-icon-danger';
@@ -1063,6 +1060,103 @@ function renderDashboard() {
       `;
       dom.dashRecentActivity.appendChild(item);
     });
+  }
+
+  // --- Analytics ---
+  renderPilotRanking();
+  renderPriceTrend();
+}
+
+// --- Pilot Ranking ---
+
+function renderPilotRanking() {
+  const filterValue = dom.dashboardFilter.value;
+  const filterVehicleId = filterValue === 'all' ? null : parseInt(filterValue);
+
+  const trips = filterVehicleId
+    ? state.allTrips.filter(t => t.vehicle_id === filterVehicleId)
+    : state.allTrips;
+
+  const pilotStats = {};
+  trips.forEach(t => {
+    if (!pilotStats[t.driver]) pilotStats[t.driver] = { km: 0, liters: 0, trips: 0 };
+    pilotStats[t.driver].km += Number(t.km);
+    pilotStats[t.driver].liters += Number(t.liters);
+    pilotStats[t.driver].trips += 1;
+  });
+
+  const ranking = Object.entries(pilotStats)
+    .filter(([, s]) => s.liters > 0)
+    .map(([driver, s]) => ({ driver, avg: +(s.km / s.liters).toFixed(1), trips: s.trips, km: s.km }))
+    .sort((a, b) => b.avg - a.avg);
+
+  const container = dom.dashPilotRanking;
+  container.innerHTML = '';
+
+  if (ranking.length === 0) {
+    container.innerHTML = '<p class="text-muted">Sin datos suficientes</p>';
+    return;
+  }
+
+  ranking.forEach((p, idx) => {
+    const medal = idx === 0 ? '&#129351;' : idx === 1 ? '&#129352;' : idx === 2 ? '&#129353;' : '';
+    const vehicle = filterVehicleId ? state.vehicles.find(v => v.id === filterVehicleId) : null;
+    const driverIdx = vehicle ? (vehicle.drivers || []).indexOf(p.driver) : idx;
+    const color = PILOT_COLORS[driverIdx >= 0 ? driverIdx % PILOT_COLORS.length : idx % PILOT_COLORS.length];
+
+    const item = document.createElement('div');
+    item.className = 'ranking-item';
+    item.innerHTML = `
+      <span class="ranking-medal">${medal}</span>
+      <div class="ranking-info">
+        <div class="ranking-name" style="color:${color}">${p.driver}</div>
+        <div class="ranking-meta">${p.trips} viajes · ${p.km.toLocaleString('es-AR')} km</div>
+      </div>
+      <div class="ranking-value">${p.avg} km/l</div>
+    `;
+    container.appendChild(item);
+  });
+}
+
+// --- Price Trend ---
+
+function renderPriceTrend() {
+  const filterValue = dom.dashboardFilter.value;
+  const filterVehicleId = filterValue === 'all' ? null : parseInt(filterValue);
+
+  const payments = (filterVehicleId
+    ? state.allPayments.filter(p => p.vehicle_id === filterVehicleId)
+    : state.allPayments)
+    .filter(p => p.price_per_liter && p.price_per_liter > 0)
+    .slice(0, 5);
+
+  const container = dom.dashPriceTrend;
+  container.innerHTML = '';
+
+  if (payments.length === 0) {
+    container.innerHTML = '<p class="text-muted">Sin precios registrados</p>';
+    return;
+  }
+
+  payments.forEach(p => {
+    const item = document.createElement('div');
+    item.className = 'price-trend-item';
+    item.innerHTML = `
+      <div class="price-trend-date">${formatDateShort(p.created_at)}</div>
+      <div class="price-trend-driver">${p.driver}</div>
+      <div class="price-trend-value">${formatCurrency(p.price_per_liter)}/l</div>
+    `;
+    container.appendChild(item);
+  });
+
+  if (payments.length >= 2) {
+    const latest = payments[0].price_per_liter;
+    const prev = payments[1].price_per_liter;
+    const diff = ((latest - prev) / prev * 100).toFixed(1);
+    const trend = document.createElement('div');
+    trend.className = `price-trend-indicator ${latest > prev ? 'up' : latest < prev ? 'down' : 'neutral'}`;
+    trend.innerHTML = `${latest > prev ? '&#9650;' : latest < prev ? '&#9660;' : '&#8211;'} ${diff > 0 ? '+' : ''}${diff}% vs anterior`;
+    container.appendChild(trend);
   }
 }
 
@@ -1291,50 +1385,55 @@ function handleClearTripsClick() {
   toggleHidden(dom.confirmModal, false);
 }
 
-// --- Clear Pilot Account ---
+// --- Settle Pilot Account ---
 
 function handleClearPilotAccount(driver) {
-  dom.confirmTitle.textContent = 'Limpiar cuenta';
-  dom.confirmMessage.textContent =
-    `¿Eliminar TODOS los viajes y cargas de ${driver} en este vehiculo? Esta accion no se puede deshacer.`;
+  const vehicle = getActiveVehicle();
+  if (!vehicle) return;
 
-  const btnText = dom.btnConfirmOk.querySelector('.btn-text');
-  if (btnText) btnText.textContent = 'Limpiar';
+  // Calcular deuda
+  let credit = 0, debit = 0;
+  state.payments.forEach(p => { if (p.driver === driver) credit += Number(p.amount); });
+  state.trips.forEach(t => { if (t.driver === driver) debit += Number(t.cost); });
+  const net = +(credit - debit).toFixed(2);
 
-  state.confirmAction = async () => {
-    const btn = dom.btnConfirmOk;
-    setButtonLoading(btn, true);
-    try {
-      await deleteTripsForDriver(state.activeVehicleId, driver);
-      await deletePaymentsForDriver(state.activeVehicleId, driver);
-      showToast(`Cuenta de ${driver} limpiada`);
-      haptic();
-      const [trips, payments] = await Promise.all([
-        fetchTrips(state.activeVehicleId),
-        fetchPayments(state.activeVehicleId),
-      ]);
-      state.trips = trips;
-      state.payments = payments;
-      state.dashboardLoaded = false;
-      renderTrips();
-      renderSummary();
-      renderBalances();
-      renderPaymentHistory();
-      toggleHidden(dom.confirmModal, true);
-    } catch (err) {
-      showToast('Error: ' + err.message, 'error');
-    } finally {
-      setButtonLoading(btn, false);
-      if (btnText) btnText.textContent = 'Eliminar';
-    }
-  };
+  if (net >= 0) {
+    showToast(`${driver} no tiene deuda pendiente`, 'error');
+    return;
+  }
 
-  toggleHidden(dom.confirmModal, false);
+  const debt = Math.abs(net);
+
+  // Abrir payment modal en modo saldado
+  state.settlementMode = true;
+  state.settlementDriver = driver;
+
+  const select = dom.paymentDriver;
+  select.innerHTML = `<option value="${driver}">${driver}</option>`;
+  select.value = driver;
+
+  dom.paymentAmount.value = debt.toFixed(2);
+  dom.paymentLiters.value = '';
+  dom.paymentPricePerLiter.value = '';
+  dom.paymentFullTank.checked = false;
+  dom.paymentNote.value = 'Saldado de deuda a: ';
+
+  // Ocultar campos de combustible
+  document.querySelectorAll('.settlement-hide').forEach(el => el.classList.add('hidden'));
+
+  $('#payment-modal-title').textContent = `Saldar cuenta de ${driver}`;
+  const btnText = dom.btnSubmitPayment.querySelector('.btn-text');
+  if (btnText) btnText.textContent = 'Registrar saldo';
+
+  toggleHidden(dom.paymentModal, false);
 }
 
 // --- Payment Modal ---
 
 function openPaymentModal() {
+  state.settlementMode = false;
+  state.settlementDriver = null;
+
   const vehicle = getActiveVehicle();
   if (!vehicle) return;
   const select = dom.paymentDriver;
@@ -1350,11 +1449,20 @@ function openPaymentModal() {
   dom.paymentPricePerLiter.value = '';
   dom.paymentFullTank.checked = false;
   dom.paymentNote.value = '';
+
+  // Mostrar campos de combustible (ocultos en modo saldado)
+  document.querySelectorAll('.settlement-hide').forEach(el => el.classList.remove('hidden'));
+  const btnText = dom.btnSubmitPayment.querySelector('.btn-text');
+  if (btnText) btnText.textContent = 'Registrar carga';
+
   $('#payment-modal-title').textContent = 'Cargar combustible';
   toggleHidden(dom.paymentModal, false);
 }
 
 function closePaymentModal() {
+  state.settlementMode = false;
+  state.settlementDriver = null;
+  document.querySelectorAll('.settlement-hide').forEach(el => el.classList.remove('hidden'));
   toggleHidden(dom.paymentModal, true);
 }
 
@@ -1382,16 +1490,22 @@ async function handlePaymentSubmit(e) {
   const isFullTank = dom.paymentFullTank.checked;
 
   try {
+    const isSettlement = state.settlementMode;
     await createPayment({
       vehicle_id: state.activeVehicleId,
       driver,
       amount,
       note: dom.paymentNote.value.trim() || null,
-      liters_loaded: litersLoaded,
-      price_per_liter: pricePerLiter,
-      is_full_tank: isFullTank,
+      liters_loaded: isSettlement ? null : litersLoaded,
+      price_per_liter: isSettlement ? null : pricePerLiter,
+      is_full_tank: isSettlement ? false : isFullTank,
     });
-    showToast('Carga registrada');
+
+    if (isSettlement) {
+      showToast(`Saldo de ${formatCurrency(amount)} registrado para ${driver}`);
+    } else {
+      showToast('Carga registrada');
+    }
     haptic();
     state.payments = await fetchPayments(state.activeVehicleId);
     state.dashboardLoaded = false;
@@ -1399,21 +1513,24 @@ async function handlePaymentSubmit(e) {
     renderPaymentHistory();
     closePaymentModal();
 
-    // Sincronizar fuel_price del vehículo con el precio de esta carga
-    if (pricePerLiter && pricePerLiter > 0) {
-      const vehicle = getActiveVehicle();
-      if (vehicle && vehicle.fuel_price !== pricePerLiter) {
-        await updateVehicle(state.activeVehicleId, { fuel_price: pricePerLiter });
-        state.vehicles = await fetchVehicles();
-        renderVehicleDetail();
-        renderVehicleCards();
-        showToast(`Precio actualizado: ${formatCurrency(pricePerLiter)}/l`);
+    // Solo para cargas reales de combustible (no saldados)
+    if (!isSettlement) {
+      // Sincronizar fuel_price del vehículo con el precio de esta carga
+      if (pricePerLiter && pricePerLiter > 0) {
+        const vehicle = getActiveVehicle();
+        if (vehicle && vehicle.fuel_price !== pricePerLiter) {
+          await updateVehicle(state.activeVehicleId, { fuel_price: pricePerLiter });
+          state.vehicles = await fetchVehicles();
+          renderVehicleDetail();
+          renderVehicleCards();
+          showToast(`Precio actualizado: ${formatCurrency(pricePerLiter)}/l`);
+        }
       }
-    }
 
-    // Auto-corrección de consumo si fue tanque lleno
-    if (isFullTank) {
-      await checkRealConsumption();
+      // Auto-corrección de consumo si fue tanque lleno
+      if (isFullTank) {
+        await checkRealConsumption();
+      }
     }
   } catch (err) {
     showToast('Error: ' + err.message, 'error');

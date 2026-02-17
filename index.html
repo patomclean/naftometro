@@ -240,6 +240,18 @@
           </div>
         </div>
 
+        <!-- Ranking de Eficiencia -->
+        <div class="glass-card">
+          <h3>Ranking de eficiencia</h3>
+          <div id="dash-pilot-ranking"></div>
+        </div>
+
+        <!-- Tendencia de Precios -->
+        <div class="glass-card">
+          <h3>Tendencia de precios</h3>
+          <div id="dash-price-trend"></div>
+        </div>
+
       </div>
     </div>
 
@@ -325,12 +337,12 @@
           <label for="payment-amount">Monto total ($)</label>
           <input type="number" id="payment-amount" min="1" step="0.01" required placeholder="Ej: 15000">
         </div>
-        <div class="quick-amounts">
+        <div class="quick-amounts settlement-hide">
           <button type="button" class="quick-amount-btn" data-amount="10000">+$10k</button>
           <button type="button" class="quick-amount-btn" data-amount="20000">+$20k</button>
           <button type="button" class="quick-amount-btn" data-amount="50000">+$50k</button>
         </div>
-        <div class="form-row">
+        <div class="form-row settlement-hide">
           <div class="form-group">
             <label for="payment-liters">Litros cargados</label>
             <input type="number" id="payment-liters" min="0.1" step="0.1" placeholder="Ej: 20">
@@ -340,7 +352,7 @@
             <input type="number" id="payment-price-per-liter" min="1" step="1" placeholder="Ej: 1350">
           </div>
         </div>
-        <div class="form-group form-group-checkbox">
+        <div class="form-group form-group-checkbox settlement-hide">
           <label class="checkbox-label">
             <input type="checkbox" id="payment-full-tank">
             <span class="checkbox-custom"></span>
