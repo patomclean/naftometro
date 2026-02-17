@@ -33,6 +33,7 @@ const IIBB_RATE = 0.0366;
 const IVA_PERC_RATE = 0.03;
 const ICL_VALUE = 288.7773;
 const IDC_VALUE = 17.6889;
+const RATE_RELATION = (IIBB_RATE + IVA_PERC_RATE) / 1.21;
 
 // ============================================================
 // 2. SUPABASE INITIALIZATION
@@ -228,15 +229,17 @@ function calculateFiscalBreakdown(amount, liters, isFacturaA, discount) {
   }
 
   if (isFacturaA && amount > 0) {
-    // A) Monto Surtidor (sin percepciones)
-    result.montoSurtidor = amount / (1 + IIBB_RATE + IVA_PERC_RATE);
-    // B) Neto Gravado (informacional)
+    // Percepciones se aplican sobre Neto Gravado (antes de IVA 21%, ICL e IDC)
+    // S = (Total + RATE_RELATION * litros * (ICL + IDC)) / (1 + RATE_RELATION)
+    const impFijos = liters > 0 ? liters * (ICL_VALUE + IDC_VALUE) : 0;
+    result.montoSurtidor = (amount + RATE_RELATION * impFijos) / (1 + RATE_RELATION);
+    // Neto Gravado (base imponible sin IVA ni impuestos fijos)
     if (liters > 0) {
-      result.netoGravado = (result.montoSurtidor - (liters * (ICL_VALUE + IDC_VALUE))) / 1.21;
+      result.netoGravado = (result.montoSurtidor - impFijos) / 1.21;
     }
-    // C) Percepciones impositivas
+    // Percepciones impositivas
     result.taxPerceptions = amount - result.montoSurtidor;
-    // D) Precio surtidor por litro
+    // Precio surtidor por litro
     result.pumpPrice = liters > 0 ? result.montoSurtidor / liters : 0;
   } else {
     // Sin Factura A: pump_price = PE
