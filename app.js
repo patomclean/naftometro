@@ -864,7 +864,7 @@ function renderTrips() {
       <td data-label="Piloto " style="color:${pilotColor};font-weight:600">${trip.driver}</td>
       <td data-label="Km ">${Number(trip.km).toLocaleString('es-AR')}</td>
       <td data-label="Litros ">${Number(trip.liters).toFixed(2)}</td>
-      <td data-label="Costo "><strong>${formatCurrency(trip.cost)}</strong>${trip.is_reconciled ? '<span class="badge-reconciled" title="Costo ajustado por reconciliación">RECONCILIADO</span>' : ''}</td>
+      <td data-label="Costo "><strong>${formatCurrency(trip.cost)}</strong>${(trip.is_reconciled === true || trip.is_reconciled === 'true') ? '<span class="badge-reconciled" title="Costo ajustado por reconciliación">RECONCILIADO</span>' : ''}</td>
       <td data-label="Tipo ">${getDriveTypeEmoji(trip.drive_type)}</td>
       <td data-label="Nota " class="trip-note" title="${trip.note || ''}">${trip.note || '-'}</td>
       <td></td>
@@ -2070,16 +2070,28 @@ async function performTankAudit() {
     const newCost = +(newLiters * fuelPrice).toFixed(2);
     totalNewCost += newCost;
 
-    await db.from('trips')
+    // v14.4: Primary update — core fields that exist since v14.1
+    const { error: primaryErr } = await db.from('trips')
+      .update({ liters: newLiters, cost: newCost, is_reconciled: true })
+      .eq('id', trip.id);
+
+    if (primaryErr) {
+      console.error('Reconciliation primary update failed:', trip.id, primaryErr);
+      continue;
+    }
+
+    // v14.4: Secondary update — metadata for popup (may fail if columns missing)
+    const { error: metaErr } = await db.from('trips')
       .update({
-        liters: newLiters,
-        cost: newCost,
-        is_reconciled: true,
         reconciled_at: new Date().toISOString(),
         original_consumption: originalConsumption,
         real_consumption: adjustedConsumption,
       })
       .eq('id', trip.id);
+
+    if (metaErr) {
+      console.warn('Reconciliation metadata update failed:', trip.id, metaErr);
+    }
   }
 
   const adjustmentAmount = +(totalNewCost - totalOldCost).toFixed(2);
