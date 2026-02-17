@@ -2047,15 +2047,26 @@ async function performTankAudit() {
   if (realLitersConsumed <= 0) return;
 
   const fuelPrice = getLatestFuelPrice(vehicle);
+
+  // v14.3: Drive-type-aware deviation factor
+  const estimatedLitersConsumed = cycleTrips.reduce((sum, t) => {
+    const consumption = getConsumptionForDriveType(vehicle, t.drive_type);
+    return sum + (t.km / consumption);
+  }, 0);
+  if (estimatedLitersConsumed <= 0) return;
+
+  const deviationFactor = realLitersConsumed / estimatedLitersConsumed;
   const realConsumption = +(totalKm / realLitersConsumed).toFixed(1);
 
-  // Phase 1: Reconciliation — recalculate cycle trips with real consumption
+  // Phase 1: Reconciliation — recalculate cycle trips respecting drive_type
   let totalOldCost = 0;
   let totalNewCost = 0;
 
   for (const trip of cycleTrips) {
     totalOldCost += Number(trip.cost);
-    const newLiters = +(trip.km / realConsumption).toFixed(2);
+    const originalConsumption = getConsumptionForDriveType(vehicle, trip.drive_type);
+    const adjustedConsumption = +(originalConsumption / deviationFactor).toFixed(1);
+    const newLiters = +(trip.km / adjustedConsumption).toFixed(2);
     const newCost = +(newLiters * fuelPrice).toFixed(2);
     totalNewCost += newCost;
 
@@ -2065,8 +2076,8 @@ async function performTankAudit() {
         cost: newCost,
         is_reconciled: true,
         reconciled_at: new Date().toISOString(),
-        original_consumption: getConsumptionForDriveType(vehicle, trip.drive_type),
-        real_consumption: realConsumption,
+        original_consumption: originalConsumption,
+        real_consumption: adjustedConsumption,
       })
       .eq('id', trip.id);
   }
