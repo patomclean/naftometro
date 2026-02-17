@@ -61,6 +61,8 @@ const state = {
   pendingConsumptionUpdate: null,
   settlementMode: false,
   settlementDriver: null,
+  editingPaymentId: null,
+  editingTripId: null,
 };
 
 // ============================================================
@@ -506,6 +508,11 @@ async function createTrip(trip) {
   return data;
 }
 
+async function updateTrip(id, data) {
+  const { error } = await db.from('trips').update(data).eq('id', id);
+  if (error) throw error;
+}
+
 async function deleteTrip(id) {
   const { error } = await db
     .from('trips')
@@ -590,6 +597,11 @@ async function createPayment(payment) {
     .single();
   if (error) throw error;
   return data;
+}
+
+async function updatePayment(id, data) {
+  const { error } = await db.from('payments').update(data).eq('id', id);
+  if (error) throw error;
 }
 
 async function deletePayment(id) {
@@ -806,6 +818,14 @@ function renderTrips() {
       <td data-label="Nota " class="trip-note" title="${trip.note || ''}">${trip.note || '-'}</td>
       <td></td>
     `;
+    // v12: Edit button for trips
+    const editBtn = document.createElement('button');
+    editBtn.className = 'btn-icon btn-icon-edit';
+    editBtn.title = 'Editar viaje';
+    editBtn.innerHTML = '&#9998;';
+    editBtn.addEventListener('click', () => openTripEditModal(trip));
+    tr.lastElementChild.appendChild(editBtn);
+
     const deleteBtn = document.createElement('button');
     deleteBtn.className = 'btn-icon btn-icon-danger';
     deleteBtn.title = 'Eliminar viaje';
@@ -1011,6 +1031,19 @@ function renderPaymentHistory() {
         showPaymentBreakdown(p);
       });
       item.appendChild(infoBtn);
+    }
+
+    // v12: Edit button for non-settlement payments
+    if (!isSettlement) {
+      const editBtn = document.createElement('button');
+      editBtn.className = 'btn-icon btn-icon-edit';
+      editBtn.title = 'Editar carga';
+      editBtn.innerHTML = '&#9998;';
+      editBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openPaymentModal(p.id);
+      });
+      item.appendChild(editBtn);
     }
 
     const deleteBtn = document.createElement('button');
@@ -1669,9 +1702,10 @@ function handleClearPilotAccount(driver) {
 
 // --- Payment Modal ---
 
-function openPaymentModal() {
+function openPaymentModal(editId) {
   state.settlementMode = false;
   state.settlementDriver = null;
+  state.editingPaymentId = editId || null;
 
   const vehicle = getActiveVehicle();
   if (!vehicle) return;
@@ -1699,18 +1733,56 @@ function openPaymentModal() {
 
   // Mostrar campos de combustible (ocultos en modo saldado)
   document.querySelectorAll('.settlement-hide').forEach(el => el.classList.remove('hidden'));
-  const btnText = dom.btnSubmitPayment.querySelector('.btn-text');
-  if (btnText) btnText.textContent = 'Registrar carga';
 
-  $('#payment-modal-title').textContent = 'Cargar combustible';
+  // v12: Edit mode — pre-fill fields with existing payment data
+  if (editId) {
+    const p = state.payments.find(pay => pay.id === editId);
+    if (!p) return;
+    dom.paymentDriver.value = p.driver;
+    dom.paymentAmount.value = p.amount;
+    dom.paymentLiters.value = p.liters_loaded || '';
+    dom.paymentPricePerLiter.value = p.price_per_liter ? Math.round(p.price_per_liter) : '';
+    dom.paymentFullTank.checked = p.is_full_tank || false;
+    dom.paymentNote.value = p.note || '';
+    // Fiscal fields
+    dom.paymentFacturaA.checked = p.invoice_type === 'Factura A';
+    dom.paymentDiscount.value = p.discount_amount || '';
+    if (p.invoice_type === 'Factura A') {
+      toggleHidden(dom.facturaADetail, false);
+      toggleHidden(dom.adjustmentsPanel, false);
+      dom.adjustmentsChevron.classList.add('chevron-open');
+    }
+    $('#payment-modal-title').textContent = 'Editar carga';
+    const btnText = dom.btnSubmitPayment.querySelector('.btn-text');
+    if (btnText) btnText.textContent = 'Guardar cambios';
+    updatePaymentPriceSummary();
+  } else {
+    const btnText = dom.btnSubmitPayment.querySelector('.btn-text');
+    if (btnText) btnText.textContent = 'Registrar carga';
+    $('#payment-modal-title').textContent = 'Cargar combustible';
+  }
+
   toggleHidden(dom.paymentModal, false);
 }
 
 function closePaymentModal() {
   state.settlementMode = false;
   state.settlementDriver = null;
+  state.editingPaymentId = null;
   document.querySelectorAll('.settlement-hide').forEach(el => el.classList.remove('hidden'));
   toggleHidden(dom.paymentModal, true);
+}
+
+// v12: Edit trip — pre-fill inline form and scroll to it
+function openTripEditModal(trip) {
+  state.editingTripId = trip.id;
+  dom.tripDriver.value = trip.driver;
+  dom.tripKm.value = trip.km;
+  dom.tripNote.value = trip.note || '';
+  handleTripKmInput();
+  const btnText = dom.btnSubmitTrip.querySelector('.btn-text');
+  if (btnText) btnText.textContent = 'Guardar cambios';
+  dom.tripForm.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
 async function handlePaymentSubmit(e) {
@@ -1765,7 +1837,7 @@ async function handlePaymentSubmit(e) {
       effectivePrice = +breakdown.effectivePrice.toFixed(2);
     }
 
-    await createPayment({
+    const paymentData = {
       vehicle_id: state.activeVehicleId,
       driver,
       amount,
@@ -1776,14 +1848,21 @@ async function handlePaymentSubmit(e) {
       invoice_type: isSettlement ? 'Ticket' : invoiceType,
       tax_perceptions: isSettlement ? 0 : fiscalPerceptions,
       discount_amount: isSettlement ? 0 : discountAmount,
-    });
+    };
 
-    if (isSettlement) {
-      showToast(`Saldo de ${formatCurrency(amount)} registrado para ${driver}`);
-    } else if (!originalLiters) {
-      showToast(`Carga registrada (${litersLoaded} lts estimados a ${formatCurrency(pricePerLiter)}/l)`);
+    // v12: Update existing or create new
+    if (state.editingPaymentId) {
+      await updatePayment(state.editingPaymentId, paymentData);
+      showToast('Carga actualizada');
     } else {
-      showToast('Carga registrada');
+      await createPayment(paymentData);
+      if (isSettlement) {
+        showToast(`Saldo de ${formatCurrency(amount)} registrado para ${driver}`);
+      } else if (!originalLiters) {
+        showToast(`Carga registrada (${litersLoaded} lts estimados a ${formatCurrency(pricePerLiter)}/l)`);
+      } else {
+        showToast('Carga registrada');
+      }
     }
     haptic();
     state.payments = await fetchPayments(state.activeVehicleId);
@@ -1974,15 +2053,30 @@ async function handleTripSubmit(e) {
   setButtonLoading(btn, true);
 
   try {
-    await createTrip({
-      vehicle_id: state.activeVehicleId,
-      driver,
-      km,
-      note: dom.tripNote.value.trim() || null,
-      liters,
-      cost,
-    });
-    showToast('Viaje registrado');
+    // v12: Update existing or create new
+    if (state.editingTripId) {
+      await updateTrip(state.editingTripId, {
+        driver,
+        km,
+        note: dom.tripNote.value.trim() || null,
+        liters,
+        cost,
+      });
+      showToast('Viaje actualizado');
+      state.editingTripId = null;
+      const btnText = dom.btnSubmitTrip.querySelector('.btn-text');
+      if (btnText) btnText.textContent = 'Registrar';
+    } else {
+      await createTrip({
+        vehicle_id: state.activeVehicleId,
+        driver,
+        km,
+        note: dom.tripNote.value.trim() || null,
+        liters,
+        cost,
+      });
+      showToast('Viaje registrado');
+    }
     haptic();
     dom.tripForm.reset();
     dom.costPreviewValue.textContent = '$0,00';

@@ -1773,3 +1773,12 @@ h3 {
   font-size: 0.75rem;
   color: var(--text-muted);
 }
+
+/* --- v12: Edit Button --- */
+.btn-icon-edit {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+.btn-icon-edit:active {
+  color: var(--color-primary);
+}
