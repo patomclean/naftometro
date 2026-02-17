@@ -28,6 +28,12 @@ const FUEL_TYPES = [
 
 const TABS = ['detail', 'home', 'dashboard'];
 
+// v10: Fiscal constants for Factura A
+const IIBB_RATE = 0.0366;
+const IVA_PERC_RATE = 0.03;
+const ICL_VALUE = 288.7773;
+const IDC_VALUE = 17.6889;
+
 // ============================================================
 // 2. SUPABASE INITIALIZATION
 // ============================================================
@@ -116,6 +122,18 @@ const dom = {
   paymentFullTank: $('#payment-full-tank'),
   paymentNote: $('#payment-note'),
   btnSubmitPayment: $('#btn-submit-payment'),
+  // v10: Fiscal audit DOM refs
+  btnToggleAdjustments: $('#btn-toggle-adjustments'),
+  adjustmentsPanel: $('#adjustments-panel'),
+  adjustmentsChevron: $('#adjustments-chevron'),
+  paymentFacturaA: $('#payment-factura-a'),
+  facturaADetail: $('#factura-a-detail'),
+  paymentDiscount: $('#payment-discount'),
+  paymentPriceSummary: $('#payment-price-summary'),
+  summaryPaid: $('#summary-paid'),
+  summaryPumpPrice: $('#summary-pump-price'),
+  summaryEffectivePrice: $('#summary-effective-price'),
+  summaryPerceptionNote: $('#summary-perception-note'),
   confirmModal: $('#confirm-modal'),
   confirmTitle: $('#confirm-title'),
   confirmMessage: $('#confirm-message'),
@@ -189,6 +207,76 @@ function getMonthName(date) {
 function getLatestFuelPrice(vehicle) {
   const latestWithPrice = state.payments.find(p => p.price_per_liter > 0);
   return latestWithPrice ? latestWithPrice.price_per_liter : vehicle.fuel_price;
+}
+
+// v10: Calculate fiscal breakdown for payment (ingenieria inversa)
+function calculateFiscalBreakdown(amount, liters, isFacturaA, discount) {
+  const result = {
+    amount, liters,
+    discount: discount || 0,
+    isFacturaA,
+    taxPerceptions: 0,
+    montoSurtidor: amount,
+    netoGravado: 0,
+    pumpPrice: 0,
+    effectivePrice: 0,
+  };
+
+  // Safe division: PE solo si litros > 0
+  if (liters > 0) {
+    result.effectivePrice = amount / liters;
+  }
+
+  if (isFacturaA && amount > 0) {
+    // A) Monto Surtidor (sin percepciones)
+    result.montoSurtidor = amount / (1 + IIBB_RATE + IVA_PERC_RATE);
+    // B) Neto Gravado (informacional)
+    if (liters > 0) {
+      result.netoGravado = (result.montoSurtidor - (liters * (ICL_VALUE + IDC_VALUE))) / 1.21;
+    }
+    // C) Percepciones impositivas
+    result.taxPerceptions = amount - result.montoSurtidor;
+    // D) Precio surtidor por litro
+    result.pumpPrice = liters > 0 ? result.montoSurtidor / liters : 0;
+  } else {
+    // Sin Factura A: pump_price = PE
+    result.pumpPrice = liters > 0 ? amount / liters : 0;
+  }
+
+  return result;
+}
+
+// v10: Update the dynamic price summary in payment modal
+function updatePaymentPriceSummary() {
+  const amount = parseFloat(dom.paymentAmount.value);
+  const liters = parseFloat(dom.paymentLiters.value);
+  const isFacturaA = dom.paymentFacturaA.checked;
+  const discount = parseFloat(dom.paymentDiscount.value) || 0;
+
+  if (!amount || amount <= 0 || !liters || liters <= 0) {
+    toggleHidden(dom.paymentPriceSummary, true);
+    return;
+  }
+
+  const breakdown = calculateFiscalBreakdown(amount, liters, isFacturaA, discount);
+
+  dom.summaryPaid.textContent = formatCurrency(amount);
+  dom.summaryPumpPrice.textContent = breakdown.pumpPrice
+    ? formatCurrency(breakdown.pumpPrice) + '/l'
+    : '-';
+  dom.summaryEffectivePrice.textContent = breakdown.effectivePrice
+    ? formatCurrency(breakdown.effectivePrice) + '/l'
+    : '-';
+
+  if (isFacturaA && breakdown.taxPerceptions > 0) {
+    dom.summaryPerceptionNote.textContent =
+      `Tu precio es mayor debido a ${formatCurrency(breakdown.taxPerceptions)} en percepciones impositivas`;
+    toggleHidden(dom.summaryPerceptionNote, false);
+  } else {
+    toggleHidden(dom.summaryPerceptionNote, true);
+  }
+
+  toggleHidden(dom.paymentPriceSummary, false);
 }
 
 function calculateCost(km, consumption, fuelPrice) {
@@ -844,6 +932,10 @@ function renderPaymentHistory() {
     const metaParts = [formatDate(p.created_at), ...extraInfo];
     if (p.note) metaParts.push(p.note);
 
+    // v10: Badge Factura A
+    const facturaBadge = (!isSettlement && p.invoice_type === 'Factura A')
+      ? '<span class="badge-factura-a">FACTURA A</span>' : '';
+
     if (isSettlement) {
       item.innerHTML = `
         <div class="settlement-icon">&#128181;</div>
@@ -857,11 +949,24 @@ function renderPaymentHistory() {
       item.innerHTML = `
         <div class="pilot-dot" style="background:${dotColor}"></div>
         <div class="payment-info">
-          <div class="payment-driver">${p.driver}</div>
+          <div class="payment-driver">${p.driver} ${facturaBadge}</div>
           <div class="payment-meta">${metaParts.join(' · ')}</div>
         </div>
         <span class="payment-amount">${formatCurrency(p.amount)}</span>
       `;
+    }
+
+    // v10: Info breakdown button for non-settlement payments
+    if (!isSettlement && (p.tax_perceptions > 0 || p.discount_amount > 0 || p.liters_loaded)) {
+      const infoBtn = document.createElement('button');
+      infoBtn.className = 'btn-info-breakdown';
+      infoBtn.title = 'Ver desglose';
+      infoBtn.innerHTML = '\u24D8';
+      infoBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        showPaymentBreakdown(p);
+      });
+      item.appendChild(infoBtn);
     }
 
     const deleteBtn = document.createElement('button');
@@ -874,6 +979,74 @@ function renderPaymentHistory() {
 
     dom.paymentsList.appendChild(item);
   });
+}
+
+// v10: Show payment breakdown popup
+function showPaymentBreakdown(payment) {
+  const existing = document.querySelector('.payment-breakdown-popup');
+  if (existing) existing.remove();
+
+  const perceptions = payment.tax_perceptions || 0;
+  const discount = payment.discount_amount || 0;
+  const montoSurtidor = payment.amount - perceptions;
+  const pumpPrice = payment.liters_loaded > 0 ? montoSurtidor / payment.liters_loaded : null;
+  const effectivePrice = payment.liters_loaded > 0 ? payment.amount / payment.liters_loaded : null;
+
+  const popup = document.createElement('div');
+  popup.className = 'payment-breakdown-popup';
+
+  let html = '<button class="breakdown-close" id="breakdown-close-btn">&times;</button>';
+
+  if (pumpPrice !== null) {
+    html += `<div class="breakdown-row">
+      <span>Monto Surtidor:</span>
+      <strong>${formatCurrency(montoSurtidor)}</strong>
+    </div>`;
+  }
+  if (perceptions > 0) {
+    html += `<div class="breakdown-row">
+      <span>Impuestos (percepciones):</span>
+      <strong>+${formatCurrency(perceptions)}</strong>
+    </div>`;
+  }
+  if (discount > 0) {
+    html += `<div class="breakdown-row">
+      <span>Descuento/Reintegro:</span>
+      <strong>-${formatCurrency(discount)}</strong>
+    </div>`;
+  }
+  html += `<div class="breakdown-row total-row">
+    <span>TOTAL PAGADO:</span>
+    <strong>${formatCurrency(payment.amount)}</strong>
+  </div>`;
+
+  if (effectivePrice !== null) {
+    html += `<div class="breakdown-row">
+      <span>Precio Efectivo:</span>
+      <strong>${formatCurrency(effectivePrice)}/l</strong>
+    </div>`;
+    if (pumpPrice !== null && perceptions > 0) {
+      html += `<div class="breakdown-row">
+        <span>Precio Surtidor:</span>
+        <strong>${formatCurrency(pumpPrice)}/l</strong>
+      </div>`;
+    }
+  }
+
+  popup.innerHTML = html;
+  document.body.appendChild(popup);
+
+  popup.querySelector('#breakdown-close-btn').addEventListener('click', () => popup.remove());
+
+  setTimeout(() => {
+    const handler = (e) => {
+      if (!popup.contains(e.target)) {
+        popup.remove();
+        document.removeEventListener('click', handler);
+      }
+    };
+    document.addEventListener('click', handler);
+  }, 100);
 }
 
 function populateFormOptions() {
@@ -1471,6 +1644,14 @@ function openPaymentModal() {
   dom.paymentFullTank.checked = false;
   dom.paymentNote.value = '';
 
+  // v10: Reset fiscal fields
+  dom.paymentFacturaA.checked = false;
+  dom.paymentDiscount.value = '';
+  toggleHidden(dom.facturaADetail, true);
+  toggleHidden(dom.adjustmentsPanel, true);
+  toggleHidden(dom.paymentPriceSummary, true);
+  dom.adjustmentsChevron.classList.remove('chevron-open');
+
   // Mostrar campos de combustible (ocultos en modo saldado)
   document.querySelectorAll('.settlement-hide').forEach(el => el.classList.remove('hidden'));
   const btnText = dom.btnSubmitPayment.querySelector('.btn-text');
@@ -1512,14 +1693,32 @@ async function handlePaymentSubmit(e) {
 
   try {
     const isSettlement = state.settlementMode;
+
+    // v10: Compute fiscal breakdown
+    const isFacturaA = isSettlement ? false : dom.paymentFacturaA.checked;
+    const discountAmount = isSettlement ? 0 : (parseFloat(dom.paymentDiscount.value) || 0);
+    const invoiceType = isFacturaA ? 'Factura A' : 'Ticket';
+
+    let fiscalPerceptions = 0;
+    let effectivePrice = null;
+
+    if (!isSettlement && litersLoaded && litersLoaded > 0 && amount > 0) {
+      const breakdown = calculateFiscalBreakdown(amount, litersLoaded, isFacturaA, discountAmount);
+      fiscalPerceptions = +breakdown.taxPerceptions.toFixed(2);
+      effectivePrice = +breakdown.effectivePrice.toFixed(2);
+    }
+
     await createPayment({
       vehicle_id: state.activeVehicleId,
       driver,
       amount,
       note: dom.paymentNote.value.trim() || null,
       liters_loaded: isSettlement ? null : litersLoaded,
-      price_per_liter: isSettlement ? null : pricePerLiter,
+      price_per_liter: isSettlement ? null : (effectivePrice || pricePerLiter),
       is_full_tank: isSettlement ? false : isFullTank,
+      invoice_type: isSettlement ? 'Ticket' : invoiceType,
+      tax_perceptions: isSettlement ? 0 : fiscalPerceptions,
+      discount_amount: isSettlement ? 0 : discountAmount,
     });
 
     if (isSettlement) {
@@ -1536,15 +1735,16 @@ async function handlePaymentSubmit(e) {
 
     // Solo para cargas reales de combustible (no saldados)
     if (!isSettlement) {
-      // Sincronizar fuel_price del vehículo con el precio de esta carga
-      if (pricePerLiter && pricePerLiter > 0) {
+      // v10: Sincronizar fuel_price con Precio Efectivo (amount/liters)
+      const syncPrice = effectivePrice || pricePerLiter;
+      if (syncPrice && syncPrice > 0) {
         const vehicle = getActiveVehicle();
-        if (vehicle && vehicle.fuel_price !== pricePerLiter) {
-          await updateVehicle(state.activeVehicleId, { fuel_price: pricePerLiter });
+        if (vehicle && vehicle.fuel_price !== syncPrice) {
+          await updateVehicle(state.activeVehicleId, { fuel_price: syncPrice });
           state.vehicles = await fetchVehicles();
           renderVehicleDetail();
           renderVehicleCards();
-          showToast(`Precio actualizado: ${formatCurrency(pricePerLiter)}/l`);
+          showToast(`Precio actualizado: ${formatCurrency(syncPrice)}/l`);
         }
       }
 
@@ -1805,6 +2005,18 @@ function generateSummaryText() {
     transfers.forEach((t) => { text += `• ${t.from} → ${t.to}: *${formatCurrency(t.amount)}*\n`; });
   }
 
+  // v10: Include effective price info for recent fuel loads
+  const recentLoads = state.payments
+    .filter(p => p.liters_loaded > 0 && !(p.note && p.note.toLowerCase().includes('saldado')))
+    .slice(0, 5);
+  if (recentLoads.length > 0) {
+    text += `\nUltimas cargas:\n`;
+    recentLoads.forEach(p => {
+      const pe = p.liters_loaded > 0 ? p.amount / p.liters_loaded : 0;
+      text += `• ${p.driver} pago *${formatCurrency(p.amount)}* (Precio efectivo: *${formatCurrency(pe)}/l*)\n`;
+    });
+  }
+
   text += `\nVer detalle en:\nhttps://naftometro.vercel.app`;
   return text;
 }
@@ -1917,6 +2129,7 @@ function bindEvents() {
     if (liters > 0 && amount > 0) {
       dom.paymentPricePerLiter.value = Math.round(amount / liters);
     }
+    updatePaymentPriceSummary();
   });
   // Price/liter change → recalc liters (amount stays)
   dom.paymentPricePerLiter.addEventListener('input', () => {
@@ -1925,6 +2138,7 @@ function bindEvents() {
     if (ppl > 0 && amount > 0) {
       dom.paymentLiters.value = (amount / ppl).toFixed(1);
     }
+    updatePaymentPriceSummary();
   });
   // Amount change → recalc liters if price exists, else recalc price if liters exist
   dom.paymentAmount.addEventListener('input', () => {
@@ -1936,6 +2150,7 @@ function bindEvents() {
     } else if (amount > 0 && liters > 0) {
       dom.paymentPricePerLiter.value = Math.round(amount / liters);
     }
+    updatePaymentPriceSummary();
   });
 
   // Quick amount buttons
@@ -1947,6 +2162,22 @@ function bindEvents() {
       haptic();
     });
   });
+
+  // v10: Ajustes de Precio toggle
+  dom.btnToggleAdjustments.addEventListener('click', () => {
+    const isHidden = dom.adjustmentsPanel.classList.contains('hidden');
+    toggleHidden(dom.adjustmentsPanel, !isHidden);
+    dom.adjustmentsChevron.classList.toggle('chevron-open', isHidden);
+  });
+
+  // v10: Factura A toggle
+  dom.paymentFacturaA.addEventListener('change', () => {
+    toggleHidden(dom.facturaADetail, !dom.paymentFacturaA.checked);
+    updatePaymentPriceSummary();
+  });
+
+  // v10: Discount input
+  dom.paymentDiscount.addEventListener('input', updatePaymentPriceSummary);
 
   // Trip form
   dom.tripForm.addEventListener('submit', handleTripSubmit);

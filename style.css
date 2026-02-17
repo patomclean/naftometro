@@ -1535,3 +1535,204 @@ h3 {
     animation: slideUp 300ms ease;
   }
 }
+
+/* ============================================================
+   v10: Modulo de Auditoria y Transparencia Fiscal
+   ============================================================ */
+
+/* --- Ajustes de Precio Panel --- */
+.price-adjustments {
+  margin-bottom: 1rem;
+}
+
+.btn-toggle-adjustments {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.65rem 0.85rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--glass-border);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: var(--font-family);
+  transition: all 0.2s;
+  min-height: 44px;
+}
+
+.btn-toggle-adjustments:active {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+#adjustments-chevron {
+  font-size: 0.7rem;
+  transition: transform 0.2s;
+}
+
+#adjustments-chevron.chevron-open {
+  transform: rotate(180deg);
+}
+
+.adjustments-panel {
+  padding: 0.75rem 0 0;
+}
+
+.factura-a-detail {
+  padding: 0.5rem 0.75rem;
+  margin-bottom: 0.75rem;
+  border-radius: var(--radius-sm);
+  background: rgba(124, 92, 252, 0.06);
+  border: 1px solid rgba(124, 92, 252, 0.15);
+}
+
+.info-line {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.2rem 0;
+  font-size: 0.78rem;
+}
+
+.info-label {
+  color: var(--text-muted);
+}
+
+.info-value {
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+/* --- Dynamic Price Summary --- */
+.payment-price-summary {
+  padding: 0.75rem 1rem;
+  border: 1px dashed rgba(124, 92, 252, 0.3);
+  border-radius: var(--radius-sm);
+  margin-bottom: 1rem;
+  background: rgba(124, 92, 252, 0.04);
+}
+
+.summary-line {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.2rem 0;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.summary-line strong {
+  color: var(--text-primary);
+  font-weight: 700;
+}
+
+.summary-line-highlight strong {
+  color: var(--color-primary);
+  font-size: 1rem;
+}
+
+.summary-note {
+  margin-top: 0.4rem;
+  padding-top: 0.4rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+/* --- Badge Factura A in Payment History --- */
+.badge-factura-a {
+  display: inline-block;
+  font-size: 0.6rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding: 0.1rem 0.4rem;
+  border-radius: var(--radius-sm);
+  background: rgba(124, 92, 252, 0.15);
+  color: var(--color-primary);
+  vertical-align: middle;
+  margin-left: 0.3rem;
+}
+
+/* --- Info Breakdown Button --- */
+.btn-info-breakdown {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 0.95rem;
+  cursor: pointer;
+  padding: 0.3rem;
+  min-width: 32px;
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  transition: all var(--transition);
+  flex-shrink: 0;
+}
+
+.btn-info-breakdown:active {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--color-primary);
+}
+
+/* --- Payment Breakdown Popup --- */
+.payment-breakdown-popup {
+  position: fixed;
+  bottom: calc(var(--nav-height) + var(--safe-bottom) + 0.75rem);
+  left: 1rem;
+  right: 1rem;
+  padding: 1rem 1.15rem;
+  border-radius: var(--radius-md);
+  background: rgba(20, 18, 50, 0.97);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(124, 92, 252, 0.25);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  z-index: 1500;
+  animation: slideUp 200ms ease;
+  max-width: 380px;
+  margin: 0 auto;
+}
+
+.breakdown-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.25rem 0;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.breakdown-row strong {
+  color: var(--text-primary);
+}
+
+.total-row {
+  border-top: 1px solid var(--glass-border);
+  margin-top: 0.35rem;
+  padding-top: 0.5rem;
+  font-weight: 700;
+  color: var(--color-primary);
+}
+
+.total-row strong {
+  color: var(--color-primary);
+}
+
+.breakdown-close {
+  position: absolute;
+  top: 0.3rem;
+  right: 0.3rem;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 1.1rem;
+  cursor: pointer;
+  padding: 0.3rem;
+  min-width: 32px;
+  min-height: 32px;
+}
