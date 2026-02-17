@@ -82,7 +82,6 @@ const state = {
   dashboardLoaded: false,
   allTrips: [],
   allPayments: [],
-  pendingConsumptionUpdate: null,
   settlementMode: false,
   settlementDriver: null,
   editingPaymentId: null,
@@ -109,6 +108,7 @@ const dom = {
   vehicleFuelTypeBadge: $('#vehicle-fuel-type-badge'),
   vehicleFuelPriceBadge: $('#vehicle-fuel-price-badge'),
   vehicleCostKmBadge: $('#vehicle-cost-km-badge'),
+  vehicleLearnedBadge: $('#vehicle-learned-badge'),
   tripForm: $('#trip-form'),
   tripDriver: $('#trip-driver'),
   tripKm: $('#trip-km'),
@@ -778,6 +778,14 @@ function renderVehicleDetail() {
   const costPerKm = latestPrice / mixedConsumption;
   dom.vehicleCostKmBadge.textContent = formatCurrency(costPerKm) + '/km';
 
+  // v14.1: Show learned consumption if it differs from spec
+  if (spec && Math.abs(vehicle.consumption - spec.mixed_km_l) > 0.3) {
+    dom.vehicleLearnedBadge.textContent = `📊 Consumo real: ${vehicle.consumption} km/l`;
+    toggleHidden(dom.vehicleLearnedBadge, false);
+  } else {
+    toggleHidden(dom.vehicleLearnedBadge, true);
+  }
+
   // v13: Tank indicator with real capacity
   const tankLevel = calculateTankLevel();
   const loads = state.payments.filter(p => p.liters_loaded > 0).map(p => Number(p.liters_loaded));
@@ -856,7 +864,7 @@ function renderTrips() {
       <td data-label="Piloto " style="color:${pilotColor};font-weight:600">${trip.driver}</td>
       <td data-label="Km ">${Number(trip.km).toLocaleString('es-AR')}</td>
       <td data-label="Litros ">${Number(trip.liters).toFixed(2)}</td>
-      <td data-label="Costo "><strong>${formatCurrency(trip.cost)}</strong></td>
+      <td data-label="Costo "><strong>${formatCurrency(trip.cost)}</strong>${trip.is_reconciled ? '<span class="badge-reconciled" title="Costo ajustado por reconciliación">⚖️</span>' : ''}</td>
       <td data-label="Tipo ">${getDriveTypeEmoji(trip.drive_type)}</td>
       <td data-label="Nota " class="trip-note" title="${trip.note || ''}">${trip.note || '-'}</td>
       <td></td>
@@ -1944,7 +1952,7 @@ async function handlePaymentSubmit(e) {
 
       // Auto-corrección de consumo si fue tanque lleno
       if (isFullTank) {
-        await checkRealConsumption();
+        await performTankAudit();
       }
     }
   } catch (err) {
@@ -1954,11 +1962,14 @@ async function handlePaymentSubmit(e) {
   }
 }
 
-// --- Auto-Corrección de Consumo ---
+// --- v14.1: Tank Reconciliation & Adaptive Learning ---
 
-async function checkRealConsumption() {
+async function performTankAudit() {
   const vehicle = getActiveVehicle();
   if (!vehicle) return;
+
+  const tankCap = getVehicleTankCapacity(vehicle);
+  if (!tankCap) return;
 
   const fullTankLoads = state.payments
     .filter(p => p.is_full_tank && p.liters_loaded > 0)
@@ -1971,62 +1982,68 @@ async function checkRealConsumption() {
   const latestDate = new Date(latest.created_at);
   const previousDate = new Date(previous.created_at);
 
-  const tripsBetween = state.trips.filter(t => {
+  const cycleTrips = state.trips.filter(t => {
     const d = new Date(t.created_at);
     return d > previousDate && d <= latestDate;
   });
-  const totalKm = tripsBetween.reduce((sum, t) => sum + Number(t.km), 0);
+  const totalKm = cycleTrips.reduce((sum, t) => sum + Number(t.km), 0);
   if (totalKm <= 0) return;
 
-  const loadsBetween = state.payments.filter(p => {
+  const cycleLoads = state.payments.filter(p => {
     if (!p.liters_loaded || p.liters_loaded <= 0) return false;
     const d = new Date(p.created_at);
     return d > previousDate && d <= latestDate;
   });
-  const totalLiters = loadsBetween.reduce((sum, p) => sum + Number(p.liters_loaded), 0);
-  if (totalLiters <= 0) return;
+  const realLitersConsumed = cycleLoads.reduce((sum, p) => sum + Number(p.liters_loaded), 0);
+  if (realLitersConsumed <= 0) return;
 
-  const realConsumption = +(totalKm / totalLiters).toFixed(1);
-  const deviation = Math.abs(realConsumption - vehicle.consumption) / vehicle.consumption;
+  const fuelPrice = getLatestFuelPrice(vehicle);
+  const realConsumption = +(totalKm / realLitersConsumed).toFixed(1);
 
-  if (deviation > 0.05) {
-    state.pendingConsumptionUpdate = { vehicleId: vehicle.id, value: realConsumption };
-    showConsumptionToast(realConsumption, vehicle.consumption);
+  // Phase 1: Reconciliation — recalculate cycle trips with real consumption
+  let totalOldCost = 0;
+  let totalNewCost = 0;
+
+  for (const trip of cycleTrips) {
+    totalOldCost += Number(trip.cost);
+    const newLiters = +(trip.km / realConsumption).toFixed(2);
+    const newCost = +(newLiters * fuelPrice).toFixed(2);
+    totalNewCost += newCost;
+
+    await db.from('trips')
+      .update({ liters: newLiters, cost: newCost, is_reconciled: true })
+      .eq('id', trip.id);
   }
-}
 
-function showConsumptionToast(realConsumption, currentConsumption) {
-  const toast = document.createElement('div');
-  toast.className = 'toast toast-action';
-  toast.innerHTML = `
-    <div>Consumo real detectado: <strong>${realConsumption} km/l</strong> (actual: ${currentConsumption} km/l)</div>
-    <button class="toast-btn">Actualizar perfil</button>
-  `;
-  dom.toastContainer.appendChild(toast);
+  const adjustmentAmount = +(totalNewCost - totalOldCost).toFixed(2);
+  state.trips = await fetchTrips(state.activeVehicleId);
 
-  toast.querySelector('.toast-btn').addEventListener('click', async () => {
-    const pending = state.pendingConsumptionUpdate;
-    if (pending) {
-      try {
-        await updateVehicle(pending.vehicleId, { consumption: pending.value });
-        state.vehicles = await fetchVehicles();
-        renderVehicleDetail();
-        renderVehicleCards();
-        showToast(`Consumo actualizado: ${pending.value} km/l`);
-      } catch (err) {
-        showToast('Error: ' + err.message, 'error');
-      }
-      state.pendingConsumptionUpdate = null;
-    }
-    toast.remove();
-  });
+  // Phase 2: Adaptive Learning — weighted average of old and real consumption
+  const LEARNING_WEIGHT = 0.7;
+  const learnedConsumption = +(
+    vehicle.consumption * LEARNING_WEIGHT + realConsumption * (1 - LEARNING_WEIGHT)
+  ).toFixed(1);
 
-  setTimeout(() => {
-    if (toast.parentNode) {
-      toast.classList.add('toast-exit');
-      toast.addEventListener('animationend', () => toast.remove());
-    }
-  }, 10000);
+  await updateVehicle(state.activeVehicleId, { consumption: learnedConsumption });
+  state.vehicles = await fetchVehicles();
+
+  // Re-render
+  renderTrips();
+  renderSummary();
+  renderBalances();
+  renderVehicleDetail();
+  renderPaymentHistory();
+
+  // Notification
+  if (Math.abs(adjustmentAmount) > 0.01) {
+    const sign = adjustmentAmount > 0 ? '+' : '';
+    showToast(
+      `Reconciliación: ${sign}${formatCurrency(adjustmentAmount)} ajustados · Consumo real: ${realConsumption} km/l`,
+      adjustmentAmount > 0 ? 'error' : 'success'
+    );
+  } else {
+    showToast(`Consumo verificado: ${realConsumption} km/l`);
+  }
 }
 
 // --- Payment Delete ---

@@ -1807,3 +1807,17 @@ h3 {
   color: #fff;
   font-weight: 600;
 }
+
+/* --- v14.1: Reconciliation badge --- */
+.badge-reconciled {
+  font-size: 0.7rem;
+  margin-left: 0.25rem;
+  cursor: help;
+}
+
+/* --- v14.1: Learned consumption badge --- */
+.badge-learned {
+  background: rgba(16, 185, 129, 0.15);
+  color: #10b981;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
