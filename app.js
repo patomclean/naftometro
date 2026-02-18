@@ -99,6 +99,8 @@ const state = {
   editingPaymentId: null,
   editingTripId: null,
   balancesExpanded: false,
+  pendingPhotoFile: null,
+  photoRemoved: false,
 };
 
 // ============================================================
@@ -209,11 +211,67 @@ const dom = {
   dashNoActivity: $('#dash-no-activity'),
   dashPilotRanking: $('#dash-pilot-ranking'),
   dashPriceTrend: $('#dash-price-trend'),
+  // v15: Photo evidence
+  paymentPhotoInput: $('#payment-photo-input'),
+  photoPreview: $('#photo-preview'),
+  photoPreviewImg: $('#photo-preview-img'),
+  btnCapturePhoto: $('#btn-capture-photo'),
+  btnRemovePhoto: $('#btn-remove-photo'),
+  photoViewerModal: $('#photo-viewer-modal'),
+  photoViewerImg: $('#photo-viewer-img'),
 };
 
 // ============================================================
 // 5. UTILITY FUNCTIONS
 // ============================================================
+
+// v15: Resize image before upload (max 1200px, JPEG 80% quality)
+function resizeImage(file, maxSize = 1200) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    const canvas = document.createElement('canvas');
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      img.onload = () => {
+        let { width, height } = img;
+        if (width > maxSize || height > maxSize) {
+          if (width > height) {
+            height = Math.round(height * maxSize / width);
+            width = maxSize;
+          } else {
+            width = Math.round(width * maxSize / height);
+            height = maxSize;
+          }
+        }
+        canvas.width = width;
+        canvas.height = height;
+        canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+        canvas.toBlob(resolve, 'image/jpeg', 0.8);
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+// v15: Upload ticket photo to Supabase Storage
+async function uploadTicketPhoto(file, vehicleId) {
+  const resized = await resizeImage(file);
+  const filename = `${vehicleId}/${Date.now()}.jpg`;
+  const { error } = await db.storage.from('fuel-tickets').upload(filename, resized, {
+    contentType: 'image/jpeg',
+    upsert: false,
+  });
+  if (error) throw error;
+  const { data } = db.storage.from('fuel-tickets').getPublicUrl(filename);
+  return data.publicUrl;
+}
+
+// v15: Open full-screen photo viewer
+function openPhotoViewer(url) {
+  dom.photoViewerImg.src = url;
+  toggleHidden(dom.photoViewerModal, false);
+}
 
 function formatCurrency(n) {
   return '$' + Number(n).toLocaleString('es-AR', {
@@ -1139,6 +1197,19 @@ function renderPaymentHistory() {
       `;
     }
 
+    // v15: Photo evidence icon
+    if (!isSettlement && p.photo_url) {
+      const photoBtn = document.createElement('button');
+      photoBtn.className = 'btn-icon btn-photo-evidence';
+      photoBtn.title = 'Ver ticket';
+      photoBtn.textContent = '\uD83D\uDCF7';
+      photoBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openPhotoViewer(p.photo_url);
+      });
+      item.appendChild(photoBtn);
+    }
+
     // v10: Info breakdown button for non-settlement payments
     if (!isSettlement && (p.tax_perceptions > 0 || p.discount_amount > 0 || p.liters_loaded)) {
       const infoBtn = document.createElement('button');
@@ -1250,10 +1321,23 @@ function showReconciliationBreakdown(trip) {
   const existing = document.querySelector('.payment-breakdown-popup');
   if (existing) existing.remove();
 
+  // v15: Find closing full-tank payment photo
+  let ticketPhotoUrl = null;
+  if (trip.reconciled_at) {
+    const reconDate = new Date(trip.reconciled_at);
+    const closingPayment = state.payments
+      .filter(p => p.is_full_tank && p.photo_url)
+      .sort((a, b) => Math.abs(getEventDate(a) - reconDate) - Math.abs(getEventDate(b) - reconDate))
+      [0];
+    if (closingPayment && Math.abs(getEventDate(closingPayment) - reconDate) < 86400000) {
+      ticketPhotoUrl = closingPayment.photo_url;
+    }
+  }
+
   const popup = document.createElement('div');
   popup.className = 'payment-breakdown-popup ticket-popup';
 
-  const reconDate = trip.reconciled_at ? formatDate(trip.reconciled_at) : '—';
+  const reconDateStr = trip.reconciled_at ? formatDate(trip.reconciled_at) : '—';
   const origConsumption = trip.original_consumption ? Number(trip.original_consumption).toFixed(1) : '—';
   const realConsumption = trip.real_consumption ? Number(trip.real_consumption).toFixed(1) : '—';
 
@@ -1275,12 +1359,17 @@ function showReconciliationBreakdown(trip) {
     </div>
     <div class="breakdown-row total-row">
       <span>Verificado el:</span>
-      <strong>${reconDate}</strong>
+      <strong>${reconDateStr}</strong>
     </div>
+    ${ticketPhotoUrl ? '<div class="breakdown-row"><button class="btn-view-ticket" id="btn-recon-view-ticket">&#128247; Ver Ticket Original</button></div>' : ''}
   `;
 
   document.body.appendChild(popup);
   popup.querySelector('#breakdown-close-btn').addEventListener('click', () => popup.remove());
+  const viewTicketBtn = popup.querySelector('#btn-recon-view-ticket');
+  if (viewTicketBtn) {
+    viewTicketBtn.addEventListener('click', () => openPhotoViewer(ticketPhotoUrl));
+  }
   setTimeout(() => {
     const handler = (e) => {
       if (!popup.contains(e.target)) {
@@ -1897,6 +1986,14 @@ function openPaymentModal(editId) {
   dom.adjustmentsDetails.open = false;
   toggleHidden(dom.paymentPriceSummary, true);
 
+  // v15: Reset photo state
+  state.pendingPhotoFile = null;
+  state.photoRemoved = false;
+  dom.paymentPhotoInput.value = '';
+  dom.photoPreviewImg.src = '';
+  toggleHidden(dom.photoPreview, true);
+  toggleHidden(dom.btnCapturePhoto, false);
+
   // Mostrar campos de combustible (ocultos en modo saldado)
   document.querySelectorAll('.settlement-hide').forEach(el => el.classList.remove('hidden'));
 
@@ -1921,6 +2018,12 @@ function openPaymentModal(editId) {
       toggleHidden(dom.facturaADetail, false);
       dom.adjustmentsDetails.open = true;
     }
+    // v15: Show existing photo in edit mode
+    if (p.photo_url) {
+      dom.photoPreviewImg.src = p.photo_url;
+      toggleHidden(dom.photoPreview, false);
+      toggleHidden(dom.btnCapturePhoto, true);
+    }
     $('#payment-modal-title').textContent = 'Editar carga';
     const btnText = dom.btnSubmitPayment.querySelector('.btn-text');
     if (btnText) btnText.textContent = 'Guardar cambios';
@@ -1940,6 +2043,9 @@ function closePaymentModal() {
   state.settlementMode = false;
   state.settlementDriver = null;
   state.editingPaymentId = null;
+  // v15: Cleanup photo state
+  state.pendingPhotoFile = null;
+  state.photoRemoved = false;
   document.querySelectorAll('.settlement-hide').forEach(el => el.classList.remove('hidden'));
   toggleHidden(dom.paymentModal, true);
 }
@@ -2055,6 +2161,20 @@ async function handlePaymentSubmit(e) {
       discount_amount: isSettlement ? 0 : discountAmount,
       occurred_at: occurredAt,
     };
+
+    // v15: Handle photo upload
+    if (state.pendingPhotoFile) {
+      try {
+        paymentData.photo_url = await uploadTicketPhoto(state.pendingPhotoFile, state.activeVehicleId);
+      } catch (photoErr) {
+        console.warn('Photo upload failed:', photoErr);
+        showToast('Foto no se pudo subir, carga guardada sin foto', 'error');
+      }
+      state.pendingPhotoFile = null;
+    } else if (state.editingPaymentId && !state.photoRemoved) {
+      const existing = state.payments.find(pay => pay.id === state.editingPaymentId);
+      if (existing && existing.photo_url) paymentData.photo_url = existing.photo_url;
+    }
 
     // v12: Update existing or create new
     if (state.editingPaymentId) {
@@ -2294,6 +2414,13 @@ function handleDeletePayment(payment) {
     setButtonLoading(btn, true);
     try {
       await deletePayment(payment.id);
+      // v15: Cleanup photo from storage (best-effort)
+      if (payment.photo_url) {
+        try {
+          const path = payment.photo_url.split('/fuel-tickets/')[1];
+          if (path) await db.storage.from('fuel-tickets').remove([decodeURIComponent(path)]);
+        } catch (e) { /* orphan photo is acceptable */ }
+      }
       showToast('Carga eliminada');
       haptic();
       state.payments = await fetchPayments(state.activeVehicleId);
@@ -2624,6 +2751,33 @@ function bindEvents() {
     if (e.target === dom.paymentModal) closePaymentModal();
   });
   dom.paymentForm.addEventListener('submit', handlePaymentSubmit);
+
+  // v15: Photo capture
+  dom.btnCapturePhoto.addEventListener('click', () => dom.paymentPhotoInput.click());
+  dom.paymentPhotoInput.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    state.pendingPhotoFile = file;
+    const url = URL.createObjectURL(file);
+    dom.photoPreviewImg.src = url;
+    toggleHidden(dom.photoPreview, false);
+    toggleHidden(dom.btnCapturePhoto, true);
+  });
+  dom.btnRemovePhoto.addEventListener('click', () => {
+    state.pendingPhotoFile = null;
+    state.photoRemoved = true;
+    dom.paymentPhotoInput.value = '';
+    if (dom.photoPreviewImg.src) URL.revokeObjectURL(dom.photoPreviewImg.src);
+    dom.photoPreviewImg.src = '';
+    toggleHidden(dom.photoPreview, true);
+    toggleHidden(dom.btnCapturePhoto, false);
+  });
+
+  // v15: Photo viewer
+  $('#btn-close-photo-viewer').addEventListener('click', () => toggleHidden(dom.photoViewerModal, true));
+  dom.photoViewerModal.addEventListener('click', (e) => {
+    if (e.target === dom.photoViewerModal) toggleHidden(dom.photoViewerModal, true);
+  });
 
   // Smart auto-calc: Monto Total is the anchor (never auto-recalculated)
   // Liters change → recalc price/liter (amount stays)

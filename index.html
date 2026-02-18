@@ -403,6 +403,16 @@
           <label for="payment-note">Nota (opcional)</label>
           <input type="text" id="payment-note" maxlength="100" placeholder="Ej: YPF de Av. Libertador">
         </div>
+        <!-- v15: Photo Evidence -->
+        <div class="form-group settlement-hide" id="photo-capture-group">
+          <label>Foto del ticket</label>
+          <input type="file" id="payment-photo-input" accept="image/*" capture="camera" class="hidden">
+          <div id="photo-preview" class="photo-preview hidden">
+            <img id="photo-preview-img" alt="Ticket preview">
+            <button type="button" id="btn-remove-photo" class="btn-icon btn-icon-danger photo-remove-btn">&times;</button>
+          </div>
+          <button type="button" id="btn-capture-photo" class="btn-capture-photo">&#128247; Adjuntar Ticket</button>
+        </div>
         <button type="submit" id="btn-submit-payment" class="btn btn-primary btn-block">
           <span class="btn-text">Registrar carga</span>
           <span class="btn-loader hidden"></span>
@@ -472,6 +482,14 @@
           <span class="btn-loader hidden"></span>
         </button>
       </form>
+    </div>
+  </div>
+
+  <!-- v15: Photo Viewer -->
+  <div id="photo-viewer-modal" class="modal-overlay hidden">
+    <div class="photo-viewer">
+      <button id="btn-close-photo-viewer" class="btn-icon photo-viewer-close">&times;</button>
+      <img id="photo-viewer-img" alt="Ticket">
     </div>
   </div>
 
