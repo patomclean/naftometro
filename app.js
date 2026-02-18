@@ -98,6 +98,7 @@ const state = {
   settlementDriver: null,
   editingPaymentId: null,
   editingTripId: null,
+  balancesExpanded: false,
 };
 
 // ============================================================
@@ -132,6 +133,8 @@ const dom = {
   balancesGrid: $('#balances-grid'),
   btnQuickTrip: $('#btn-quick-trip'),
   btnQuickFuel: $('#btn-quick-fuel'),
+  tripModal: $('#trip-modal'),
+  tripModalTitle: $('#trip-modal-title'),
   clearingSection: $('#clearing-section'),
   clearingList: $('#clearing-list'),
   paymentsList: $('#payments-list'),
@@ -168,9 +171,8 @@ const dom = {
   paymentNote: $('#payment-note'),
   btnSubmitPayment: $('#btn-submit-payment'),
   // v10: Fiscal audit DOM refs
-  btnToggleAdjustments: $('#btn-toggle-adjustments'),
+  adjustmentsDetails: $('#adjustments-details'),
   adjustmentsPanel: $('#adjustments-panel'),
-  adjustmentsChevron: $('#adjustments-chevron'),
   paymentFacturaA: $('#payment-factura-a'),
   facturaADetail: $('#factura-a-detail'),
   paymentDiscount: $('#payment-discount'),
@@ -850,10 +852,6 @@ function renderVehicleDetail() {
     toggleHidden(dom.tankIndicator, true);
   }
 
-  renderDriverSelect(vehicle.drivers || []);
-  // v14.6: Default occurred_at for trip form
-  if (!state.editingTripId) dom.tripOccurredAt.value = toLocalDatetimeValue();
-
   // Apply stagger animation to detail content children
   const detailContent = dom.detailContent;
   detailContent.classList.remove('detail-stagger');
@@ -892,39 +890,14 @@ function renderTrips() {
 
   dom.tripsTbody.innerHTML = '';
 
-  // v14.7: Build audit cycle boundaries from full tank loads
-  const fullTanks = state.payments
-    .filter(p => p.is_full_tank && p.liters_loaded > 0)
-    .sort((a, b) => getEventDate(b) - getEventDate(a));
-
-  function getCycleHeader(trip) {
-    const tripDate = getEventDate(trip);
-    for (let i = 0; i < fullTanks.length - 1; i++) {
-      const cycleEnd = getEventDate(fullTanks[i]);
-      const cycleStart = getEventDate(fullTanks[i + 1]);
-      if (tripDate > cycleStart && tripDate <= cycleEnd) {
-        return `Ciclo ${formatDate(fullTanks[i + 1].occurred_at || fullTanks[i + 1].created_at)} — ${formatDate(fullTanks[i].occurred_at || fullTanks[i].created_at)}`;
-      }
-    }
-    return null;
-  }
-
   let currentGroup = '';
 
   trips.forEach((trip) => {
-    const cycleHeader = getCycleHeader(trip);
-    const groupKey = cycleHeader || getDateGroup(trip.occurred_at || trip.created_at);
-
-    if (groupKey !== currentGroup) {
-      currentGroup = groupKey;
+    const group = getDateGroup(trip.occurred_at || trip.created_at);
+    if (group !== currentGroup) {
+      currentGroup = group;
       const groupRow = document.createElement('tr');
-      if (cycleHeader) {
-        groupRow.innerHTML = `<td colspan="8" class="trip-date-group trip-cycle-header">
-          ${cycleHeader} <span class="badge-cycle">AUDITADO</span>
-        </td>`;
-      } else {
-        groupRow.innerHTML = `<td colspan="8" class="trip-date-group">${groupKey}</td>`;
-      }
+      groupRow.innerHTML = `<td colspan="8" class="trip-date-group">${group}</td>`;
       dom.tripsTbody.appendChild(groupRow);
     }
 
@@ -936,7 +909,7 @@ function renderTrips() {
       <td data-label="Piloto " style="color:${pilotColor};font-weight:600">${trip.driver}</td>
       <td data-label="Km ">${Number(trip.km).toLocaleString('es-AR')}</td>
       <td data-label="Litros ">${Number(trip.liters).toFixed(2)}</td>
-      <td data-label="Costo "><strong>${formatCurrency(trip.cost)}</strong>${(trip.is_reconciled === true || trip.is_reconciled === 'true') ? '<span class="reconciled-check" title="Costo verificado por auditoría">✓</span>' : ''}</td>
+      <td data-label="Costo "><strong>${formatCurrency(trip.cost)}</strong>${(trip.is_reconciled === true || trip.is_reconciled === 'true') ? '<span class="reconciled-check" title="Precio verificado">✓</span>' : '<span class="estimated-price" title="Este precio se ajustara cuando alguien llene el tanque">Estimado</span>'}</td>
       <td data-label="Tipo ">${getDriveTypeEmoji(trip.drive_type)}</td>
       <td data-label="Nota " class="trip-note" title="${trip.note || ''}">${trip.note || '-'}</td>
       <td></td>
@@ -951,7 +924,7 @@ function renderTrips() {
     editBtn.className = 'btn-icon btn-icon-edit';
     editBtn.title = 'Editar viaje';
     editBtn.innerHTML = '&#9998;';
-    editBtn.addEventListener('click', () => openTripEditModal(trip));
+    editBtn.addEventListener('click', () => openTripModal(trip));
     tr.lastElementChild.appendChild(editBtn);
 
     const deleteBtn = document.createElement('button');
@@ -1062,6 +1035,11 @@ function renderBalances() {
     const settleBtn = card.querySelector('.btn-settle-pilot');
     if (settleBtn) {
       settleBtn.addEventListener('click', () => handleClearPilotAccount(driver));
+    }
+
+    // v14.8: Respect master toggle state
+    if (state.balancesExpanded) {
+      card.querySelector('.balance-expand').classList.remove('hidden');
     }
 
     dom.balancesGrid.appendChild(card);
@@ -1282,7 +1260,10 @@ function showReconciliationBreakdown(trip) {
   popup.innerHTML = `
     <button class="breakdown-close" id="breakdown-close-btn">&times;</button>
     <div class="breakdown-row" style="font-weight:600;margin-bottom:0.5rem">
-      ⚖️ Reconciliación de Viaje
+      ✓ Precio Verificado
+    </div>
+    <div class="breakdown-row">
+      <span>Este viaje fue ajustado al costo real del surtidor.</span>
     </div>
     <div class="breakdown-row">
       <span>Consumo estimado:</span>
@@ -1293,7 +1274,7 @@ function showReconciliationBreakdown(trip) {
       <strong>${realConsumption} km/l</strong>
     </div>
     <div class="breakdown-row total-row">
-      <span>Ajustado el:</span>
+      <span>Verificado el:</span>
       <strong>${reconDate}</strong>
     </div>
   `;
@@ -1913,9 +1894,8 @@ function openPaymentModal(editId) {
   dom.paymentFacturaA.checked = false;
   dom.paymentDiscount.value = '';
   toggleHidden(dom.facturaADetail, true);
-  toggleHidden(dom.adjustmentsPanel, true);
+  dom.adjustmentsDetails.open = false;
   toggleHidden(dom.paymentPriceSummary, true);
-  dom.adjustmentsChevron.classList.remove('chevron-open');
 
   // Mostrar campos de combustible (ocultos en modo saldado)
   document.querySelectorAll('.settlement-hide').forEach(el => el.classList.remove('hidden'));
@@ -1939,8 +1919,7 @@ function openPaymentModal(editId) {
     dom.paymentDiscount.value = p.discount_amount || '';
     if (p.invoice_type === 'Factura A') {
       toggleHidden(dom.facturaADetail, false);
-      toggleHidden(dom.adjustmentsPanel, false);
-      dom.adjustmentsChevron.classList.add('chevron-open');
+      dom.adjustmentsDetails.open = true;
     }
     $('#payment-modal-title').textContent = 'Editar carga';
     const btnText = dom.btnSubmitPayment.querySelector('.btn-text');
@@ -1965,27 +1944,45 @@ function closePaymentModal() {
   toggleHidden(dom.paymentModal, true);
 }
 
-// v12: Edit trip — pre-fill inline form and scroll to it
-function openTripEditModal(trip) {
-  state.editingTripId = trip.id;
-  dom.tripDriver.value = trip.driver;
-  dom.tripKm.value = trip.km;
-  dom.tripNote.value = trip.note || '';
-  // v14.6: Restore occurred_at
-  dom.tripOccurredAt.value = trip.occurred_at
-    ? toLocalDatetimeValue(new Date(trip.occurred_at))
-    : toLocalDatetimeValue(new Date(trip.created_at));
-  // v13: Restore drive type
-  const savedType = trip.drive_type || 'Mixto';
-  if (dom.tripDriveType) dom.tripDriveType.value = savedType;
-  if (dom.driveTypeSelector) {
+// v14.8: Trip modal open/close
+function openTripModal(editTrip) {
+  const vehicle = getActiveVehicle();
+  if (!vehicle) return;
+  renderDriverSelect(vehicle.drivers || []);
+  if (editTrip) {
+    state.editingTripId = editTrip.id;
+    dom.tripDriver.value = editTrip.driver;
+    dom.tripKm.value = editTrip.km;
+    dom.tripNote.value = editTrip.note || '';
+    dom.tripOccurredAt.value = editTrip.occurred_at
+      ? toLocalDatetimeValue(new Date(editTrip.occurred_at))
+      : toLocalDatetimeValue(new Date(editTrip.created_at));
+    const savedType = editTrip.drive_type || 'Mixto';
+    if (dom.tripDriveType) dom.tripDriveType.value = savedType;
+    if (dom.driveTypeSelector) {
+      dom.driveTypeSelector.querySelectorAll('.drive-type-btn').forEach(b =>
+        b.classList.toggle('drive-type-btn--active', b.dataset.type === savedType));
+    }
+    handleTripKmInput();
+    dom.tripModalTitle.textContent = 'Editar viaje';
+    dom.btnSubmitTrip.querySelector('.btn-text').textContent = 'Guardar cambios';
+  } else {
+    state.editingTripId = null;
+    dom.tripForm.reset();
+    dom.tripOccurredAt.value = toLocalDatetimeValue();
+    dom.tripDriveType.value = 'Mixto';
     dom.driveTypeSelector.querySelectorAll('.drive-type-btn').forEach(b =>
-      b.classList.toggle('drive-type-btn--active', b.dataset.type === savedType));
+      b.classList.toggle('drive-type-btn--active', b.dataset.type === 'Mixto'));
+    dom.costPreviewValue.textContent = '$0,00';
+    dom.tripModalTitle.textContent = 'Registrar viaje';
+    dom.btnSubmitTrip.querySelector('.btn-text').textContent = 'Registrar viaje';
   }
-  handleTripKmInput();
-  const btnText = dom.btnSubmitTrip.querySelector('.btn-text');
-  if (btnText) btnText.textContent = 'Guardar cambios';
-  dom.tripForm.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  toggleHidden(dom.tripModal, false);
+}
+
+function closeTripModal() {
+  toggleHidden(dom.tripModal, true);
+  state.editingTripId = null;
 }
 
 async function handlePaymentSubmit(e) {
@@ -2381,9 +2378,6 @@ async function handleTripSubmit(e) {
         occurred_at: occurredAt,
       });
       showToast('Viaje actualizado');
-      state.editingTripId = null;
-      const btnText = dom.btnSubmitTrip.querySelector('.btn-text');
-      if (btnText) btnText.textContent = 'Registrar';
     } else {
       await createTrip({
         vehicle_id: state.activeVehicleId,
@@ -2398,14 +2392,7 @@ async function handleTripSubmit(e) {
       showToast('Viaje registrado');
     }
     haptic();
-    dom.tripForm.reset();
-    dom.costPreviewValue.textContent = '$0,00';
-    // v14.6: Reset occurred_at to now
-    dom.tripOccurredAt.value = toLocalDatetimeValue();
-    // v13: Reset drive type selector
-    dom.tripDriveType.value = 'Mixto';
-    dom.driveTypeSelector.querySelectorAll('.drive-type-btn').forEach(b =>
-      b.classList.toggle('drive-type-btn--active', b.dataset.type === 'Mixto'));
+    closeTripModal();
     state.trips = await fetchTrips(state.activeVehicleId);
     state.dashboardLoaded = false;
     renderTrips();
@@ -2556,10 +2543,11 @@ function bindEvents() {
   $('#btn-add-vehicle').addEventListener('click', () => openVehicleModal('add'));
 
   // Add trip from Home
-  $('#btn-add-trip-home').addEventListener('click', () => {
+  $('#btn-add-trip-home').addEventListener('click', async () => {
     const vehicleId = state.activeVehicleId || state.lastVisitedVehicleId || (state.vehicles.length === 1 ? state.vehicles[0].id : null);
     if (vehicleId) {
-      selectVehicle(vehicleId);
+      await selectVehicle(vehicleId);
+      openTripModal();
       haptic();
     } else if (state.vehicles.length > 1) {
       showToast('Selecciona un vehiculo primero', 'error');
@@ -2578,12 +2566,26 @@ function bindEvents() {
   $('#btn-share').addEventListener('click', handleShare);
   $('#btn-share-balances').addEventListener('click', handleShare);
 
-  // v14.7: Action Center buttons
-  dom.btnQuickTrip.addEventListener('click', () => {
-    dom.tripForm.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    dom.tripKm.focus();
-  });
+  // v14.8: Action Center buttons
+  dom.btnQuickTrip.addEventListener('click', () => openTripModal());
   dom.btnQuickFuel.addEventListener('click', () => openPaymentModal());
+
+  // v14.8: Trip modal close
+  $('#btn-close-trip-modal').addEventListener('click', closeTripModal);
+  dom.tripModal.addEventListener('click', (e) => {
+    if (e.target === dom.tripModal) closeTripModal();
+  });
+
+  // v14.8: Balance master toggle
+  $('#btn-toggle-all-balances').addEventListener('click', () => {
+    state.balancesExpanded = !state.balancesExpanded;
+    document.querySelectorAll('.balance-expand').forEach(el => {
+      el.classList.toggle('hidden', !state.balancesExpanded);
+    });
+    const btn = $('#btn-toggle-all-balances');
+    btn.innerHTML = state.balancesExpanded ? '&#9650;' : '&#9660;';
+    btn.title = state.balancesExpanded ? 'Colapsar todos' : 'Expandir todos';
+  });
 
   // Toggle dashboard total spent (exact vs short)
   dom.dashTotalSpent.addEventListener('click', () => {
@@ -2663,13 +2665,6 @@ function bindEvents() {
       dom.paymentAmount.dispatchEvent(new Event('input'));
       haptic();
     });
-  });
-
-  // v10: Ajustes de Precio toggle
-  dom.btnToggleAdjustments.addEventListener('click', () => {
-    const isHidden = dom.adjustmentsPanel.classList.contains('hidden');
-    toggleHidden(dom.adjustmentsPanel, !isHidden);
-    dom.adjustmentsChevron.classList.toggle('chevron-open', isHidden);
   });
 
   // v10: Factura A toggle

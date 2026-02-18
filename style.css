@@ -1540,39 +1540,35 @@ h3 {
    v10: Modulo de Auditoria y Transparencia Fiscal
    ============================================================ */
 
-/* --- Ajustes de Precio Panel --- */
-.price-adjustments {
+/* --- v14.8: Native details/summary accordion --- */
+.price-adjustments-accordion {
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
   margin-bottom: 1rem;
 }
 
-.btn-toggle-adjustments {
-  width: 100%;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+.adjustments-summary {
   padding: 0.65rem 0.85rem;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--glass-border);
   background: rgba(255, 255, 255, 0.03);
   color: var(--text-secondary);
   font-size: 0.85rem;
   font-weight: 600;
   cursor: pointer;
   font-family: var(--font-family);
-  transition: all 0.2s;
   min-height: 44px;
+  display: flex;
+  align-items: center;
+  list-style: none;
 }
-
-.btn-toggle-adjustments:active {
-  background: rgba(255, 255, 255, 0.08);
-}
-
-#adjustments-chevron {
+.adjustments-summary::-webkit-details-marker { display: none; }
+.adjustments-summary::after {
+  content: '\25BC';
+  margin-left: auto;
   font-size: 0.7rem;
   transition: transform 0.2s;
 }
-
-#adjustments-chevron.chevron-open {
+.price-adjustments-accordion[open] .adjustments-summary::after {
   transform: rotate(180deg);
 }
 
@@ -1901,27 +1897,7 @@ input[type="datetime-local"] {
   color: var(--text-secondary);
 }
 
-/* --- v14.7: Cycle headers in trip history --- */
-.trip-cycle-header {
-  background: rgba(245, 158, 11, 0.06) !important;
-  border-left: 3px solid #f59e0b;
-}
-
-.badge-cycle {
-  display: inline-block;
-  font-size: 0.6rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-  padding: 0.1rem 0.4rem;
-  border-radius: var(--radius-sm);
-  background: rgba(245, 158, 11, 0.15);
-  color: #f59e0b;
-  vertical-align: middle;
-  margin-left: 0.5rem;
-}
-
-/* --- v14.7: Reconciled check (replaces full badge) --- */
+/* --- v14.7: Reconciled check --- */
 .reconciled-check {
   color: #10b981;
   font-size: 0.8rem;
@@ -1934,4 +1910,19 @@ input[type="datetime-local"] {
 .ticket-popup .breakdown-row strong {
   font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
   letter-spacing: -0.02em;
+}
+
+/* --- v14.8: Estimated price label --- */
+.estimated-price {
+  font-size: 0.6rem;
+  color: var(--text-muted);
+  margin-left: 0.25rem;
+  font-style: italic;
+}
+
+/* --- v14.8: Section actions flex container --- */
+.section-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }

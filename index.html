@@ -75,51 +75,6 @@
             </button>
           </div>
 
-          <!-- Trip Form Card -->
-          <div class="glass-card">
-            <h3>Registrar viaje</h3>
-            <form id="trip-form">
-              <div class="form-row">
-                <div class="form-group">
-                  <label for="trip-driver">Piloto</label>
-                  <select id="trip-driver" required>
-                    <option value="">Seleccionar...</option>
-                  </select>
-                </div>
-                <div class="form-group">
-                  <label for="trip-km">Kilometros</label>
-                  <input type="number" id="trip-km" min="0.1" step="0.1" required placeholder="Ej: 25">
-                </div>
-              </div>
-              <div class="form-group">
-                <label for="trip-occurred-at">Fecha y hora</label>
-                <input type="datetime-local" id="trip-occurred-at">
-              </div>
-              <div class="form-group">
-                <label for="trip-note">Nota (opcional)</label>
-                <input type="text" id="trip-note" maxlength="100" placeholder="Ej: Ida al trabajo">
-              </div>
-              <!-- v13: Drive type selector -->
-              <div class="form-group">
-                <label>Tipo de manejo</label>
-                <div class="drive-type-selector" id="drive-type-selector">
-                  <button type="button" class="drive-type-btn" data-type="Urbano">🏙️ Urbano</button>
-                  <button type="button" class="drive-type-btn drive-type-btn--active" data-type="Mixto">🛣️ Mixto</button>
-                  <button type="button" class="drive-type-btn" data-type="Ruta">🏁 Ruta</button>
-                </div>
-                <input type="hidden" id="trip-drive-type" value="Mixto">
-              </div>
-              <div class="cost-preview" id="cost-preview">
-                <span>Costo estimado:</span>
-                <strong id="cost-preview-value">$0,00</strong>
-              </div>
-              <button type="submit" id="btn-submit-trip" class="btn btn-primary btn-block">
-                <span class="btn-text">Registrar viaje</span>
-                <span class="btn-loader hidden"></span>
-              </button>
-            </form>
-          </div>
-
           <!-- Summary Card -->
           <div class="glass-card">
             <div class="section-header">
@@ -137,7 +92,10 @@
           <div class="glass-card">
             <div class="section-header">
               <h3>Balances</h3>
-              <button id="btn-share-balances" class="btn btn-secondary btn-sm">Compartir</button>
+              <div class="section-actions">
+                <button id="btn-toggle-all-balances" class="btn-icon" title="Expandir todos">&#9660;</button>
+                <button id="btn-share-balances" class="btn btn-secondary btn-sm">Compartir</button>
+              </div>
             </div>
             <div id="balances-grid" class="balances-grid"></div>
             <div id="clearing-section" class="clearing-section hidden">
@@ -387,12 +345,10 @@
             <input type="number" id="payment-price-per-liter" min="1" step="1" placeholder="Ej: 1350">
           </div>
         </div>
-        <!-- v10: Ajustes de Precio Panel -->
-        <div class="price-adjustments settlement-hide">
-          <button type="button" id="btn-toggle-adjustments" class="btn-toggle-adjustments">
-            Ajustes de Precio <span id="adjustments-chevron">&#9660;</span>
-          </button>
-          <div id="adjustments-panel" class="adjustments-panel hidden">
+        <!-- v14.8: Ajustes de Precio (native accordion) -->
+        <details class="price-adjustments-accordion settlement-hide" id="adjustments-details">
+          <summary class="adjustments-summary">Ajustes de Precio</summary>
+          <div class="adjustments-panel" id="adjustments-panel">
             <div class="form-group form-group-checkbox">
               <label class="checkbox-label">
                 <input type="checkbox" id="payment-factura-a">
@@ -415,7 +371,7 @@
               <input type="number" id="payment-discount" min="0" step="0.01" placeholder="Ej: 500">
             </div>
           </div>
-        </div>
+        </details>
         <!-- v10: Dynamic Price Summary -->
         <div id="payment-price-summary" class="payment-price-summary settlement-hide hidden">
           <div class="summary-line">
@@ -467,6 +423,55 @@
           <span class="btn-loader hidden"></span>
         </button>
       </div>
+    </div>
+  </div>
+
+  <!-- v14.8: Trip Modal -->
+  <div id="trip-modal" class="modal-overlay hidden">
+    <div class="modal glass-card modal-sm">
+      <div class="modal-header">
+        <h3 id="trip-modal-title">Registrar viaje</h3>
+        <button id="btn-close-trip-modal" class="btn-icon">&times;</button>
+      </div>
+      <form id="trip-form">
+        <div class="form-row">
+          <div class="form-group">
+            <label for="trip-driver">Piloto</label>
+            <select id="trip-driver" required>
+              <option value="">Seleccionar...</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="trip-km">Kilometros</label>
+            <input type="number" id="trip-km" min="0.1" step="0.1" required placeholder="Ej: 25">
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="trip-occurred-at">Fecha y hora</label>
+          <input type="datetime-local" id="trip-occurred-at">
+        </div>
+        <div class="form-group">
+          <label for="trip-note">Nota (opcional)</label>
+          <input type="text" id="trip-note" maxlength="100" placeholder="Ej: Ida al trabajo">
+        </div>
+        <div class="form-group">
+          <label>Tipo de manejo</label>
+          <div class="drive-type-selector" id="drive-type-selector">
+            <button type="button" class="drive-type-btn" data-type="Urbano">🏙️ Urbano</button>
+            <button type="button" class="drive-type-btn drive-type-btn--active" data-type="Mixto">🛣️ Mixto</button>
+            <button type="button" class="drive-type-btn" data-type="Ruta">🏁 Ruta</button>
+          </div>
+          <input type="hidden" id="trip-drive-type" value="Mixto">
+        </div>
+        <div class="cost-preview" id="cost-preview">
+          <span>Costo estimado:</span>
+          <strong id="cost-preview-value">$0,00</strong>
+        </div>
+        <button type="submit" id="btn-submit-trip" class="btn btn-primary btn-block">
+          <span class="btn-text">Registrar viaje</span>
+          <span class="btn-loader hidden"></span>
+        </button>
+      </form>
     </div>
   </div>
 
