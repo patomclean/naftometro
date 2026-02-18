@@ -130,7 +130,8 @@ const dom = {
   summaryGrid: $('#summary-grid'),
   summaryTotalValue: $('#summary-total-value'),
   balancesGrid: $('#balances-grid'),
-  btnAddFuel: $('#btn-add-fuel'),
+  btnQuickTrip: $('#btn-quick-trip'),
+  btnQuickFuel: $('#btn-quick-fuel'),
   clearingSection: $('#clearing-section'),
   clearingList: $('#clearing-list'),
   paymentsList: $('#payments-list'),
@@ -891,14 +892,39 @@ function renderTrips() {
 
   dom.tripsTbody.innerHTML = '';
 
+  // v14.7: Build audit cycle boundaries from full tank loads
+  const fullTanks = state.payments
+    .filter(p => p.is_full_tank && p.liters_loaded > 0)
+    .sort((a, b) => getEventDate(b) - getEventDate(a));
+
+  function getCycleHeader(trip) {
+    const tripDate = getEventDate(trip);
+    for (let i = 0; i < fullTanks.length - 1; i++) {
+      const cycleEnd = getEventDate(fullTanks[i]);
+      const cycleStart = getEventDate(fullTanks[i + 1]);
+      if (tripDate > cycleStart && tripDate <= cycleEnd) {
+        return `Ciclo ${formatDate(fullTanks[i + 1].occurred_at || fullTanks[i + 1].created_at)} — ${formatDate(fullTanks[i].occurred_at || fullTanks[i].created_at)}`;
+      }
+    }
+    return null;
+  }
+
   let currentGroup = '';
 
   trips.forEach((trip) => {
-    const group = getDateGroup(trip.occurred_at || trip.created_at);
-    if (group !== currentGroup) {
-      currentGroup = group;
+    const cycleHeader = getCycleHeader(trip);
+    const groupKey = cycleHeader || getDateGroup(trip.occurred_at || trip.created_at);
+
+    if (groupKey !== currentGroup) {
+      currentGroup = groupKey;
       const groupRow = document.createElement('tr');
-      groupRow.innerHTML = `<td colspan="8" class="trip-date-group">${group}</td>`;
+      if (cycleHeader) {
+        groupRow.innerHTML = `<td colspan="8" class="trip-date-group trip-cycle-header">
+          ${cycleHeader} <span class="badge-cycle">AUDITADO</span>
+        </td>`;
+      } else {
+        groupRow.innerHTML = `<td colspan="8" class="trip-date-group">${groupKey}</td>`;
+      }
       dom.tripsTbody.appendChild(groupRow);
     }
 
@@ -910,13 +936,13 @@ function renderTrips() {
       <td data-label="Piloto " style="color:${pilotColor};font-weight:600">${trip.driver}</td>
       <td data-label="Km ">${Number(trip.km).toLocaleString('es-AR')}</td>
       <td data-label="Litros ">${Number(trip.liters).toFixed(2)}</td>
-      <td data-label="Costo "><strong>${formatCurrency(trip.cost)}</strong>${(trip.is_reconciled === true || trip.is_reconciled === 'true') ? '<span class="badge-reconciled" title="Costo ajustado por reconciliación">RECONCILIADO</span>' : ''}</td>
+      <td data-label="Costo "><strong>${formatCurrency(trip.cost)}</strong>${(trip.is_reconciled === true || trip.is_reconciled === 'true') ? '<span class="reconciled-check" title="Costo verificado por auditoría">✓</span>' : ''}</td>
       <td data-label="Tipo ">${getDriveTypeEmoji(trip.drive_type)}</td>
       <td data-label="Nota " class="trip-note" title="${trip.note || ''}">${trip.note || '-'}</td>
       <td></td>
     `;
-    // v14.2: Reconciliation badge click handler
-    const reconBadge = tr.querySelector('.badge-reconciled');
+    // v14.2: Reconciliation check click handler
+    const reconBadge = tr.querySelector('.reconciled-check');
     if (reconBadge) {
       reconBadge.addEventListener('click', () => showReconciliationBreakdown(trip));
     }
@@ -1010,15 +1036,28 @@ function renderBalances() {
     const isPositive = net > 0;
     const isZero = Math.abs(net) < 0.01;
     card.innerHTML = `
-      <div class="driver-name" style="color:${pilotColor}">${driver}</div>
-      <div class="balance-amount ${isZero ? 'clear' : isPositive ? 'clear' : 'debt'}">
-        ${isZero ? 'Al dia' : (isPositive ? '+' : '') + formatCurrency(net)}
+      <div class="balance-summary">
+        <div class="driver-name" style="color:${pilotColor}">${driver}</div>
+        <div class="balance-amount ${isZero ? 'clear' : isPositive ? 'clear' : 'debt'}">
+          ${isZero ? 'Al dia' : (isPositive ? '+' : '') + formatCurrency(net)}
+        </div>
       </div>
-      <div class="balance-detail">Aportes: ${formatCurrency(credit)} · Consumo: ${formatCurrency(debit)}</div>
-      ${isZero ? '<span class="badge-clear">Saldado</span>' :
-        isPositive ? '<span class="badge-clear">A favor</span>' : ''}
-      ${net < -0.01 ? `<button class="btn-settle-pilot" data-driver="${driver}">Saldar cuenta</button>` : ''}
+      <div class="balance-expand hidden">
+        <div class="balance-detail">
+          <span>Aportes:</span><strong>${formatCurrency(credit)}</strong>
+        </div>
+        <div class="balance-detail">
+          <span>Consumo:</span><strong>${formatCurrency(debit)}</strong>
+        </div>
+        ${isZero ? '<span class="badge-clear">Saldado</span>' :
+          isPositive ? '<span class="badge-clear">A favor</span>' : ''}
+        ${net < -0.01 ? `<button class="btn-settle-pilot" data-driver="${driver}">Saldar cuenta</button>` : ''}
+      </div>
     `;
+
+    card.querySelector('.balance-summary').addEventListener('click', () => {
+      card.querySelector('.balance-expand').classList.toggle('hidden');
+    });
 
     const settleBtn = card.querySelector('.btn-settle-pilot');
     if (settleBtn) {
@@ -1172,7 +1211,7 @@ function showPaymentBreakdown(payment) {
   const effectivePrice = payment.liters_loaded > 0 ? payment.amount / payment.liters_loaded : null;
 
   const popup = document.createElement('div');
-  popup.className = 'payment-breakdown-popup';
+  popup.className = 'payment-breakdown-popup ticket-popup';
 
   let html = '<button class="breakdown-close" id="breakdown-close-btn">&times;</button>';
 
@@ -1234,7 +1273,7 @@ function showReconciliationBreakdown(trip) {
   if (existing) existing.remove();
 
   const popup = document.createElement('div');
-  popup.className = 'payment-breakdown-popup';
+  popup.className = 'payment-breakdown-popup ticket-popup';
 
   const reconDate = trip.reconciled_at ? formatDate(trip.reconciled_at) : '—';
   const origConsumption = trip.original_consumption ? Number(trip.original_consumption).toFixed(1) : '—';
@@ -2539,8 +2578,12 @@ function bindEvents() {
   $('#btn-share').addEventListener('click', handleShare);
   $('#btn-share-balances').addEventListener('click', handleShare);
 
-  // Fuel load button
-  dom.btnAddFuel.addEventListener('click', () => openPaymentModal());
+  // v14.7: Action Center buttons
+  dom.btnQuickTrip.addEventListener('click', () => {
+    dom.tripForm.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    dom.tripKm.focus();
+  });
+  dom.btnQuickFuel.addEventListener('click', () => openPaymentModal());
 
   // Toggle dashboard total spent (exact vs short)
   dom.dashTotalSpent.addEventListener('click', () => {

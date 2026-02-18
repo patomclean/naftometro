@@ -1835,3 +1835,103 @@ h3 {
 input[type="datetime-local"] {
   color-scheme: dark;
 }
+
+/* --- v14.7: Action Center --- */
+.action-center {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
+}
+
+.btn-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.85rem 1rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--glass-border);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-primary);
+  font-size: 0.9rem;
+  font-weight: 600;
+  font-family: var(--font-family);
+  cursor: pointer;
+  min-height: 48px;
+  transition: all 0.2s;
+}
+
+.btn-action:active {
+  background: rgba(255, 255, 255, 0.08);
+  transform: scale(0.97);
+}
+
+.btn-action-icon {
+  font-size: 1.1rem;
+}
+
+.btn-action-fuel {
+  background: rgba(124, 92, 252, 0.1);
+  border-color: rgba(124, 92, 252, 0.3);
+  color: var(--color-primary);
+}
+
+/* --- v14.7: Balance accordion --- */
+.balance-summary {
+  cursor: pointer;
+  user-select: none;
+}
+
+.balance-expand {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.balance-expand .balance-detail {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  padding: 0.15rem 0;
+}
+
+.balance-expand .balance-detail strong {
+  color: var(--text-secondary);
+}
+
+/* --- v14.7: Cycle headers in trip history --- */
+.trip-cycle-header {
+  background: rgba(245, 158, 11, 0.06) !important;
+  border-left: 3px solid #f59e0b;
+}
+
+.badge-cycle {
+  display: inline-block;
+  font-size: 0.6rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding: 0.1rem 0.4rem;
+  border-radius: var(--radius-sm);
+  background: rgba(245, 158, 11, 0.15);
+  color: #f59e0b;
+  vertical-align: middle;
+  margin-left: 0.5rem;
+}
+
+/* --- v14.7: Reconciled check (replaces full badge) --- */
+.reconciled-check {
+  color: #10b981;
+  font-size: 0.8rem;
+  margin-left: 0.25rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+/* --- v14.7: Ticket-style popup --- */
+.ticket-popup .breakdown-row strong {
+  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  letter-spacing: -0.02em;
+}
