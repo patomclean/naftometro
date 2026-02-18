@@ -43,6 +43,18 @@ function getDriveTypeEmoji(driveType) {
   return '🛣️';
 }
 
+// v14.6: Temporal helpers
+function toLocalDatetimeValue(date) {
+  const d = date || new Date();
+  const offset = d.getTimezoneOffset();
+  const local = new Date(d.getTime() - offset * 60000);
+  return local.toISOString().slice(0, 16);
+}
+
+function getEventDate(record) {
+  return new Date(record.occurred_at || record.created_at);
+}
+
 const FUEL_TYPES = [
   'Super (95 octanos)',
   'Premium (98 octanos)',
@@ -130,6 +142,8 @@ const dom = {
   // v13: Drive type selector
   tripDriveType: $('#trip-drive-type'),
   driveTypeSelector: $('#drive-type-selector'),
+  tripOccurredAt: $('#trip-occurred-at'),
+  paymentOccurredAt: $('#payment-occurred-at'),
   // Modals
   vehicleModal: $('#vehicle-modal'),
   modalTitle: $('#modal-title'),
@@ -283,8 +297,38 @@ function calculateFiscalBreakdown(amount, liters, isFacturaA, discount) {
   return result;
 }
 
-// v11: Calculate virtual tank level from payments and trips
+// v14.6: Calculate virtual tank level — resets at last full tank
 function calculateTankLevel() {
+  const vehicle = getActiveVehicle();
+  const tankCap = vehicle ? getVehicleTankCapacity(vehicle) : null;
+
+  // Find the last full-tank payment by occurred_at
+  const lastFullTank = state.payments
+    .filter(p => p.is_full_tank && p.liters_loaded > 0)
+    .sort((a, b) => getEventDate(b) - getEventDate(a))[0];
+
+  if (lastFullTank && tankCap) {
+    const lastFullDate = getEventDate(lastFullTank);
+    let level = tankCap;
+
+    // Add loads after the last full tank (excluding itself)
+    state.payments.forEach(p => {
+      if (p.liters_loaded > 0 && p.id !== lastFullTank.id && getEventDate(p) > lastFullDate) {
+        level += Number(p.liters_loaded);
+      }
+    });
+
+    // Subtract trips after the last full tank
+    state.trips.forEach(t => {
+      if (t.liters > 0 && getEventDate(t) > lastFullDate) {
+        level -= Number(t.liters);
+      }
+    });
+
+    return +level.toFixed(2);
+  }
+
+  // Fallback: total sum (no full tank reference point)
   let litersIn = 0;
   state.payments.forEach(p => {
     if (p.liters_loaded > 0) litersIn += Number(p.liters_loaded);
@@ -709,7 +753,7 @@ async function renderVehicleCards() {
       </div>
       <div class="vehicle-card-footer">
         <span>${drivers.length} persona${drivers.length !== 1 ? 's' : ''}</span>
-        <span>${lastTrip ? formatDate(lastTrip.created_at) + ' · ' + lastTrip.driver : 'Sin viajes'}</span>
+        <span>${lastTrip ? formatDate(lastTrip.occurred_at || lastTrip.created_at) + ' · ' + lastTrip.driver : 'Sin viajes'}</span>
       </div>
     `;
     card.addEventListener('click', () => selectVehicle(v.id));
@@ -806,6 +850,8 @@ function renderVehicleDetail() {
   }
 
   renderDriverSelect(vehicle.drivers || []);
+  // v14.6: Default occurred_at for trip form
+  if (!state.editingTripId) dom.tripOccurredAt.value = toLocalDatetimeValue();
 
   // Apply stagger animation to detail content children
   const detailContent = dom.detailContent;
@@ -848,7 +894,7 @@ function renderTrips() {
   let currentGroup = '';
 
   trips.forEach((trip) => {
-    const group = getDateGroup(trip.created_at);
+    const group = getDateGroup(trip.occurred_at || trip.created_at);
     if (group !== currentGroup) {
       currentGroup = group;
       const groupRow = document.createElement('tr');
@@ -860,7 +906,7 @@ function renderTrips() {
     const pilotColor = PILOT_COLORS[driverIdx >= 0 ? driverIdx % PILOT_COLORS.length : 0];
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td data-label="Fecha ">${formatDate(trip.created_at)}</td>
+      <td data-label="Fecha ">${formatDate(trip.occurred_at || trip.created_at)}</td>
       <td data-label="Piloto " style="color:${pilotColor};font-weight:600">${trip.driver}</td>
       <td data-label="Km ">${Number(trip.km).toLocaleString('es-AR')}</td>
       <td data-label="Litros ">${Number(trip.liters).toFixed(2)}</td>
@@ -1049,7 +1095,7 @@ function renderPaymentHistory() {
     if (p.liters_loaded) extraInfo.push(`${p.liters_loaded} lts`);
     if (p.price_per_liter) extraInfo.push(`${formatCurrency(p.price_per_liter)}/l`);
     if (p.is_full_tank) extraInfo.push('Tanque lleno');
-    const metaParts = [formatDate(p.created_at), ...extraInfo];
+    const metaParts = [formatDate(p.occurred_at || p.created_at), ...extraInfo];
     if (p.note) metaParts.push(p.note);
 
     // v10: Badge Factura A
@@ -1845,6 +1891,10 @@ function openPaymentModal(editId) {
     dom.paymentPricePerLiter.value = p.price_per_liter ? Math.round(p.price_per_liter) : '';
     dom.paymentFullTank.checked = p.is_full_tank || false;
     dom.paymentNote.value = p.note || '';
+    // v14.6: Restore occurred_at
+    dom.paymentOccurredAt.value = p.occurred_at
+      ? toLocalDatetimeValue(new Date(p.occurred_at))
+      : toLocalDatetimeValue(new Date(p.created_at));
     // Fiscal fields
     dom.paymentFacturaA.checked = p.invoice_type === 'Factura A';
     dom.paymentDiscount.value = p.discount_amount || '';
@@ -1861,6 +1911,8 @@ function openPaymentModal(editId) {
     const btnText = dom.btnSubmitPayment.querySelector('.btn-text');
     if (btnText) btnText.textContent = 'Registrar carga';
     $('#payment-modal-title').textContent = 'Cargar combustible';
+    // v14.6: Default occurred_at to now
+    dom.paymentOccurredAt.value = toLocalDatetimeValue();
   }
 
   toggleHidden(dom.paymentModal, false);
@@ -1880,6 +1932,10 @@ function openTripEditModal(trip) {
   dom.tripDriver.value = trip.driver;
   dom.tripKm.value = trip.km;
   dom.tripNote.value = trip.note || '';
+  // v14.6: Restore occurred_at
+  dom.tripOccurredAt.value = trip.occurred_at
+    ? toLocalDatetimeValue(new Date(trip.occurred_at))
+    : toLocalDatetimeValue(new Date(trip.created_at));
   // v13: Restore drive type
   const savedType = trip.drive_type || 'Mixto';
   if (dom.tripDriveType) dom.tripDriveType.value = savedType;
@@ -1945,6 +2001,11 @@ async function handlePaymentSubmit(e) {
       effectivePrice = +breakdown.effectivePrice.toFixed(2);
     }
 
+    // v14.6: Temporal dimension
+    const occurredAt = dom.paymentOccurredAt.value
+      ? new Date(dom.paymentOccurredAt.value).toISOString()
+      : new Date().toISOString();
+
     const paymentData = {
       vehicle_id: state.activeVehicleId,
       driver,
@@ -1956,6 +2017,7 @@ async function handlePaymentSubmit(e) {
       invoice_type: isSettlement ? 'Ticket' : invoiceType,
       tax_perceptions: isSettlement ? 0 : fiscalPerceptions,
       discount_amount: isSettlement ? 0 : discountAmount,
+      occurred_at: occurredAt,
     };
 
     // v12: Update existing or create new
@@ -2023,19 +2085,20 @@ async function performTankAudit() {
   const tankCap = getVehicleTankCapacity(vehicle);
   if (!tankCap) return;
 
+  // v14.6: Use occurred_at for chronological ordering
   const fullTankLoads = state.payments
     .filter(p => p.is_full_tank && p.liters_loaded > 0)
-    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    .sort((a, b) => getEventDate(b) - getEventDate(a));
 
   if (fullTankLoads.length < 2) return;
 
   const latest = fullTankLoads[0];
   const previous = fullTankLoads[1];
-  const latestDate = new Date(latest.created_at);
-  const previousDate = new Date(previous.created_at);
+  const latestDate = getEventDate(latest);
+  const previousDate = getEventDate(previous);
 
   const cycleTrips = state.trips.filter(t => {
-    const d = new Date(t.created_at);
+    const d = getEventDate(t);
     return d > previousDate && d <= latestDate;
   });
   const totalKm = cycleTrips.reduce((sum, t) => sum + Number(t.km), 0);
@@ -2043,7 +2106,7 @@ async function performTankAudit() {
 
   const cycleLoads = state.payments.filter(p => {
     if (!p.liters_loaded || p.liters_loaded <= 0) return false;
-    const d = new Date(p.created_at);
+    const d = getEventDate(p);
     return d > previousDate && d <= latestDate;
   });
   const realLitersConsumed = cycleLoads.reduce((sum, p) => sum + Number(p.liters_loaded), 0);
@@ -2130,9 +2193,10 @@ async function recalculateGlobalConsumption() {
   const spec = VEHICLE_DATABASE[vehicle.model];
   if (!spec) return;
 
+  // v14.6: Use occurred_at for chronological ordering
   const fullTanks = state.payments
     .filter(p => p.is_full_tank && p.liters_loaded > 0)
-    .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+    .sort((a, b) => getEventDate(a) - getEventDate(b));
 
   if (fullTanks.length < 2) {
     if (vehicle.consumption !== spec.mixed_km_l) {
@@ -2147,17 +2211,17 @@ async function recalculateGlobalConsumption() {
   let totalLitersAllCycles = 0;
 
   for (let i = 1; i < fullTanks.length; i++) {
-    const prevDate = new Date(fullTanks[i - 1].created_at);
-    const currDate = new Date(fullTanks[i].created_at);
+    const prevDate = getEventDate(fullTanks[i - 1]);
+    const currDate = getEventDate(fullTanks[i]);
 
     const cycleKm = state.trips
-      .filter(t => { const d = new Date(t.created_at); return d > prevDate && d <= currDate; })
+      .filter(t => { const d = getEventDate(t); return d > prevDate && d <= currDate; })
       .reduce((sum, t) => sum + Number(t.km), 0);
 
     const cycleLiters = state.payments
       .filter(p => {
         if (!p.liters_loaded || p.liters_loaded <= 0) return false;
-        const d = new Date(p.created_at);
+        const d = getEventDate(p);
         return d > prevDate && d <= currDate;
       })
       .reduce((sum, p) => sum + Number(p.liters_loaded), 0);
@@ -2251,6 +2315,11 @@ async function handleTripSubmit(e) {
   const consumption = getConsumptionForDriveType(vehicle, driveType);
   const { liters, cost } = calculateCost(km, consumption, getLatestFuelPrice(vehicle));
 
+  // v14.6: Temporal dimension
+  const occurredAt = dom.tripOccurredAt.value
+    ? new Date(dom.tripOccurredAt.value).toISOString()
+    : new Date().toISOString();
+
   // v11: Verificar tanque virtual
   const tankLevel = calculateTankLevel();
   if (tankLevel <= 0) {
@@ -2270,6 +2339,7 @@ async function handleTripSubmit(e) {
         liters,
         cost,
         drive_type: driveType,
+        occurred_at: occurredAt,
       });
       showToast('Viaje actualizado');
       state.editingTripId = null;
@@ -2284,12 +2354,15 @@ async function handleTripSubmit(e) {
         liters,
         cost,
         drive_type: driveType,
+        occurred_at: occurredAt,
       });
       showToast('Viaje registrado');
     }
     haptic();
     dom.tripForm.reset();
     dom.costPreviewValue.textContent = '$0,00';
+    // v14.6: Reset occurred_at to now
+    dom.tripOccurredAt.value = toLocalDatetimeValue();
     // v13: Reset drive type selector
     dom.tripDriveType.value = 'Mixto';
     dom.driveTypeSelector.querySelectorAll('.drive-type-btn').forEach(b =>

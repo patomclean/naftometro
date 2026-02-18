@@ -1830,3 +1830,8 @@ h3 {
   color: #10b981;
   border: 1px solid rgba(16, 185, 129, 0.3);
 }
+
+/* --- v14.6: Dark datetime picker --- */
+input[type="datetime-local"] {
+  color-scheme: dark;
+}
