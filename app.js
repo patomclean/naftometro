@@ -780,7 +780,7 @@ function renderVehicleDetail() {
 
   // v14.1: Show learned consumption if it differs from spec
   if (spec && Math.abs(vehicle.consumption - spec.mixed_km_l) > 0.3) {
-    dom.vehicleLearnedBadge.textContent = `📊 Consumo real: ${vehicle.consumption} km/l`;
+    dom.vehicleLearnedBadge.textContent = `📊 Consumo histórico real: ${vehicle.consumption} km/l`;
     toggleHidden(dom.vehicleLearnedBadge, false);
   } else {
     toggleHidden(dom.vehicleLearnedBadge, true);
@@ -1962,6 +1962,9 @@ async function handlePaymentSubmit(e) {
     if (state.editingPaymentId) {
       await updatePayment(state.editingPaymentId, paymentData);
       showToast('Carga actualizada');
+      // v14.5: Recalculate global consumption after editing a payment
+      state.payments = await fetchPayments(state.activeVehicleId);
+      await recalculateGlobalConsumption();
     } else {
       await createPayment(paymentData);
       if (isSettlement) {
@@ -2077,6 +2080,7 @@ async function performTankAudit() {
 
     if (primaryErr) {
       console.error('Reconciliation primary update failed:', trip.id, primaryErr);
+      window.alert(`Error de reconciliación en viaje ${trip.id}: ${primaryErr.message || JSON.stringify(primaryErr)}`);
       continue;
     }
 
@@ -2097,14 +2101,8 @@ async function performTankAudit() {
   const adjustmentAmount = +(totalNewCost - totalOldCost).toFixed(2);
   state.trips = await fetchTrips(state.activeVehicleId);
 
-  // Phase 2: Adaptive Learning — weighted average of old and real consumption
-  const LEARNING_WEIGHT = 0.7;
-  const learnedConsumption = +(
-    vehicle.consumption * LEARNING_WEIGHT + realConsumption * (1 - LEARNING_WEIGHT)
-  ).toFixed(1);
-
-  await updateVehicle(state.activeVehicleId, { consumption: learnedConsumption });
-  state.vehicles = await fetchVehicles();
+  // Phase 2: Reconstructive memory — recalculate from all closed cycles
+  await recalculateGlobalConsumption();
 
   // Re-render
   renderTrips();
@@ -2122,6 +2120,62 @@ async function performTankAudit() {
     );
   } else {
     showToast(`Consumo verificado: ${realConsumption} km/l`);
+  }
+}
+
+// v14.5: Reconstructive memory — recalculate consumption from ALL closed cycles
+async function recalculateGlobalConsumption() {
+  const vehicle = getActiveVehicle();
+  if (!vehicle) return;
+  const spec = VEHICLE_DATABASE[vehicle.model];
+  if (!spec) return;
+
+  const fullTanks = state.payments
+    .filter(p => p.is_full_tank && p.liters_loaded > 0)
+    .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+
+  if (fullTanks.length < 2) {
+    if (vehicle.consumption !== spec.mixed_km_l) {
+      await updateVehicle(state.activeVehicleId, { consumption: spec.mixed_km_l });
+      state.vehicles = await fetchVehicles();
+      renderVehicleDetail();
+    }
+    return;
+  }
+
+  let totalKmAllCycles = 0;
+  let totalLitersAllCycles = 0;
+
+  for (let i = 1; i < fullTanks.length; i++) {
+    const prevDate = new Date(fullTanks[i - 1].created_at);
+    const currDate = new Date(fullTanks[i].created_at);
+
+    const cycleKm = state.trips
+      .filter(t => { const d = new Date(t.created_at); return d > prevDate && d <= currDate; })
+      .reduce((sum, t) => sum + Number(t.km), 0);
+
+    const cycleLiters = state.payments
+      .filter(p => {
+        if (!p.liters_loaded || p.liters_loaded <= 0) return false;
+        const d = new Date(p.created_at);
+        return d > prevDate && d <= currDate;
+      })
+      .reduce((sum, p) => sum + Number(p.liters_loaded), 0);
+
+    if (cycleKm > 0 && cycleLiters > 0) {
+      totalKmAllCycles += cycleKm;
+      totalLitersAllCycles += cycleLiters;
+    }
+  }
+
+  if (totalKmAllCycles <= 0 || totalLitersAllCycles <= 0) return;
+
+  const globalConsumption = +(totalKmAllCycles / totalLitersAllCycles).toFixed(1);
+
+  if (vehicle.consumption !== globalConsumption) {
+    await updateVehicle(state.activeVehicleId, { consumption: globalConsumption });
+    state.vehicles = await fetchVehicles();
+    renderVehicleDetail();
   }
 }
 
@@ -2146,6 +2200,8 @@ function handleDeletePayment(payment) {
       state.dashboardLoaded = false;
       renderBalances();
       renderPaymentHistory();
+      // v14.5: Recalculate global consumption after deleting a payment
+      await recalculateGlobalConsumption();
       toggleHidden(dom.confirmModal, true);
     } catch (err) {
       showToast('Error: ' + err.message, 'error');
