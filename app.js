@@ -219,6 +219,9 @@ const dom = {
   btnRemovePhoto: $('#btn-remove-photo'),
   photoViewerModal: $('#photo-viewer-modal'),
   photoViewerImg: $('#photo-viewer-img'),
+  // v15.1: Tank capital
+  tankCapitalSection: $('#tank-capital-section'),
+  tankCapitalText: $('#tank-capital-text'),
 };
 
 // ============================================================
@@ -930,6 +933,15 @@ function renderDriverSelect(drivers) {
   });
 }
 
+// v15.1: Determine if trip is truly verified (has a full-tank payment after it)
+function isTripVerified(trip) {
+  if (!trip.is_reconciled) return false;
+  const tripDate = getEventDate(trip);
+  return state.payments.some(p =>
+    p.is_full_tank && p.liters_loaded > 0 && getEventDate(p) > tripDate
+  );
+}
+
 function renderTrips() {
   const trips = state.trips;
   const vehicle = getActiveVehicle();
@@ -967,7 +979,7 @@ function renderTrips() {
       <td data-label="Piloto " style="color:${pilotColor};font-weight:600">${trip.driver}</td>
       <td data-label="Km ">${Number(trip.km).toLocaleString('es-AR')}</td>
       <td data-label="Litros ">${Number(trip.liters).toFixed(2)}</td>
-      <td data-label="Costo "><strong>${formatCurrency(trip.cost)}</strong>${(trip.is_reconciled === true || trip.is_reconciled === 'true') ? '<span class="reconciled-check" title="Precio verificado">✓</span>' : '<span class="estimated-price" title="Este precio se ajustara cuando alguien llene el tanque">Estimado</span>'}</td>
+      <td data-label="Costo "><strong>${formatCurrency(trip.cost)}</strong>${isTripVerified(trip) ? '<span class="reconciled-check" title="Precio verificado">✓</span>' : '<span class="estimated-price" title="Precio estimado">Estimado</span>'}</td>
       <td data-label="Tipo ">${getDriveTypeEmoji(trip.drive_type)}</td>
       <td data-label="Nota " class="trip-note" title="${trip.note || ''}">${trip.note || '-'}</td>
       <td></td>
@@ -976,6 +988,11 @@ function renderTrips() {
     const reconBadge = tr.querySelector('.reconciled-check');
     if (reconBadge) {
       reconBadge.addEventListener('click', () => showReconciliationBreakdown(trip));
+    }
+    // v15.1: Estimated price popup
+    const estimatedBadge = tr.querySelector('.estimated-price');
+    if (estimatedBadge) {
+      estimatedBadge.addEventListener('click', () => showEstimatedExplanation());
     }
     // v12: Edit button for trips
     const editBtn = document.createElement('button');
@@ -1104,6 +1121,7 @@ function renderBalances() {
   });
 
   renderClearing(balances);
+  renderTankCapital();
 }
 
 function renderClearing(balances) {
@@ -1145,6 +1163,54 @@ function renderClearing(balances) {
     `;
     dom.clearingList.appendChild(item);
   });
+}
+
+// v15.1: Show capital currently held in the tank
+function renderTankCapital() {
+  const vehicle = getActiveVehicle();
+  if (!vehicle) {
+    toggleHidden(dom.tankCapitalSection, true);
+    return;
+  }
+
+  const level = calculateTankLevel();
+  if (level <= 0.5) {
+    toggleHidden(dom.tankCapitalSection, true);
+    return;
+  }
+
+  const fuelPrice = getLatestFuelPrice(vehicle);
+  const capitalValue = +(level * fuelPrice).toFixed(2);
+
+  // Find who paid for fuel since last full-tank
+  const lastFullTank = state.payments
+    .filter(p => p.is_full_tank && p.liters_loaded > 0)
+    .sort((a, b) => getEventDate(b) - getEventDate(a))[0];
+
+  const contributions = {};
+  const cutoffDate = lastFullTank ? getEventDate(lastFullTank) : new Date(0);
+
+  state.payments.forEach(p => {
+    if (p.liters_loaded > 0) {
+      const pDate = getEventDate(p);
+      if (pDate >= cutoffDate) {
+        contributions[p.driver] = (contributions[p.driver] || 0) + Number(p.liters_loaded);
+      }
+    }
+  });
+
+  const contributors = Object.entries(contributions)
+    .sort((a, b) => b[1] - a[1])
+    .map(([driver]) => driver);
+
+  const mainContributor = contributors.length > 0
+    ? contributors.join(' y ')
+    : 'los pilotos';
+
+  dom.tankCapitalText.textContent =
+    `El auto tiene ${level.toFixed(1)} litros valorados en ${formatCurrency(capitalValue)} que fueron pagados por ${mainContributor}.`;
+
+  toggleHidden(dom.tankCapitalSection, false);
 }
 
 function renderPaymentHistory() {
@@ -1370,6 +1436,36 @@ function showReconciliationBreakdown(trip) {
   if (viewTicketBtn) {
     viewTicketBtn.addEventListener('click', () => openPhotoViewer(ticketPhotoUrl));
   }
+  setTimeout(() => {
+    const handler = (e) => {
+      if (!popup.contains(e.target)) {
+        popup.remove();
+        document.removeEventListener('click', handler);
+      }
+    };
+    document.addEventListener('click', handler);
+  }, 100);
+}
+
+// v15.1: Popup explanation for estimated prices
+function showEstimatedExplanation() {
+  const existing = document.querySelector('.payment-breakdown-popup');
+  if (existing) existing.remove();
+
+  const popup = document.createElement('div');
+  popup.className = 'payment-breakdown-popup ticket-popup';
+  popup.innerHTML = `
+    <button class="breakdown-close" id="breakdown-close-btn">&times;</button>
+    <div class="breakdown-row" style="font-weight:600;margin-bottom:0.5rem">
+      Precio Estimado
+    </div>
+    <div class="breakdown-row">
+      <span>Este precio es una estimación basada en la última carga. Se ajustará al valor real en el próximo tanque lleno.</span>
+    </div>
+  `;
+
+  document.body.appendChild(popup);
+  popup.querySelector('#breakdown-close-btn').addEventListener('click', () => popup.remove());
   setTimeout(() => {
     const handler = (e) => {
       if (!popup.contains(e.target)) {

@@ -1947,3 +1947,11 @@ input[type="datetime-local"] {
 /* v15: View ticket button in reconciliation popup */
 .btn-view-ticket { width:100%; padding:0.5rem; border:1px solid var(--glass-border); border-radius:var(--radius-sm); background:rgba(255,255,255,0.05); color:var(--text-secondary); font-size:0.8rem; cursor:pointer; font-family:var(--font-family); margin-top:0.5rem; }
 .btn-view-ticket:active { background:rgba(255,255,255,0.1); }
+
+/* --- v15.1: Tank Capital section --- */
+.tank-capital-section { margin-top:0.75rem; padding:0.75rem; border-radius:var(--radius-sm); background:rgba(255,255,255,0.03); border:1px solid var(--glass-border); }
+.tank-capital-section h4 { font-size:0.8rem; color:var(--text-muted); margin-bottom:0.35rem; }
+.tank-capital-text { font-size:0.8rem; color:var(--text-secondary); line-height:1.4; margin:0; }
+
+/* v15.1: Estimated price clickable */
+.estimated-price { cursor:pointer; }
