@@ -1411,6 +1411,46 @@ h3 {
 
 /* --- Responsive --- */
 
+/* --- v15.3: Mobile adaptations (≤768px) --- */
+@media (max-width: 768px) {
+  /* Payment cards: wrap metadata to avoid overflow */
+  .payment-item {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    padding: 0.6rem;
+  }
+  .payment-item .payment-meta {
+    font-size: 0.7rem;
+    line-height: 1.4;
+    word-break: break-word;
+  }
+  .payment-item .payment-amount {
+    font-size: 0.85rem;
+  }
+
+  /* Trip table: badge spacing */
+  .reconciled-check,
+  .estimated-price {
+    display: inline-block;
+    margin-left: 0.35rem;
+    margin-right: 0.25rem;
+  }
+
+  /* General: ensure content doesn't touch edges */
+  .glass-card {
+    padding: 1.25rem 1rem;
+  }
+
+  /* Action buttons: prevent cramping */
+  .payment-item .btn-icon,
+  .payment-item .btn-info-breakdown,
+  .payment-item .btn-photo-evidence {
+    min-width: 36px;
+    min-height: 36px;
+    flex-shrink: 0;
+  }
+}
+
 /* Mobile (< 480px) */
 @media (max-width: 480px) {
   .app-header {
@@ -1506,6 +1546,23 @@ h3 {
     right: 0.25rem;
     padding: 0;
     width: auto;
+  }
+
+  /* v15.3: Payment meta smaller on tiny screens */
+  .payment-item .payment-meta {
+    font-size: 0.68rem;
+  }
+
+  /* v15.3: Badge spacing in mobile trip cards */
+  .reconciled-check,
+  .estimated-price {
+    margin-left: 0.3rem;
+    margin-right: 0.5rem;
+  }
+
+  /* v15.3: Trip card cost cell padding */
+  .trips-table td[data-label="Costo "] {
+    padding-right: 3rem;
   }
 }
 

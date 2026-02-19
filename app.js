@@ -508,10 +508,13 @@ function navigateTo(tab) {
     }
   }
 
-  // Reset scroll to top on target view
+  // v15.3: Scroll-to-top — immediate + post-transition
   const viewMap = { detail: '#view-detail', home: '#view-home', dashboard: '#view-dashboard' };
   const targetView = $(viewMap[tab]);
-  if (targetView) targetView.scrollTop = 0;
+  if (targetView) {
+    targetView.scrollTop = 0;
+    setTimeout(() => { targetView.scrollTop = 0; }, 400);
+  }
 
   updateActiveTab(tab);
 }
