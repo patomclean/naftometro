@@ -508,12 +508,13 @@ function navigateTo(tab) {
     }
   }
 
-  // v15.3: Scroll-to-top — immediate + post-transition
+  // v15.4: Scroll reset — rAF-based for smooth native feel
   const viewMap = { detail: '#view-detail', home: '#view-home', dashboard: '#view-dashboard' };
   const targetView = $(viewMap[tab]);
   if (targetView) {
-    targetView.scrollTop = 0;
-    setTimeout(() => { targetView.scrollTop = 0; }, 400);
+    requestAnimationFrame(() => {
+      targetView.scrollTop = 0;
+    });
   }
 
   updateActiveTab(tab);

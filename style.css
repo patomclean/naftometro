@@ -325,6 +325,7 @@ body {
 .app-header {
   text-align: center;
   padding: 2rem 0 1.5rem;
+  margin-top: 0.25rem;
 }
 
 .app-header h1 {
@@ -1422,7 +1423,8 @@ h3 {
   .payment-item .payment-meta {
     font-size: 0.7rem;
     line-height: 1.4;
-    word-break: break-word;
+    white-space: normal;
+    overflow-wrap: break-word;
   }
   .payment-item .payment-amount {
     font-size: 0.85rem;
@@ -1455,6 +1457,7 @@ h3 {
 @media (max-width: 480px) {
   .app-header {
     padding: 1.25rem 0 1rem;
+    margin-top: 0.5rem;
   }
 
   .app-header h1 {
@@ -1937,30 +1940,35 @@ input[type="datetime-local"] {
 }
 
 .balance-expand {
-  margin-top: 0.75rem;
-  padding-top: 0.75rem;
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
   border-top: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 .balance-expand .balance-detail {
   display: flex;
   justify-content: space-between;
-  font-size: 0.78rem;
+  font-size: 0.75rem;
   color: var(--text-muted);
-  padding: 0.15rem 0;
+  padding: 0.1rem 0;
 }
 
 .balance-expand .balance-detail strong {
   color: var(--text-secondary);
 }
 
-/* --- v14.7: Reconciled check --- */
+/* --- v15.4: Enhanced badge — Reconciled check --- */
 .reconciled-check {
-  color: #10b981;
-  font-size: 0.8rem;
-  margin-left: 0.25rem;
+  display: inline-block;
+  font-size: 0.65rem;
   font-weight: 700;
+  color: #10b981;
+  background: rgba(16, 185, 129, 0.12);
+  padding: 0.1rem 0.4rem;
+  border-radius: 999px;
+  margin-left: 0.35rem;
   cursor: pointer;
+  vertical-align: middle;
 }
 
 /* --- v14.7: Ticket-style popup --- */
@@ -1969,12 +1977,19 @@ input[type="datetime-local"] {
   letter-spacing: -0.02em;
 }
 
-/* --- v14.8: Estimated price label --- */
+/* --- v15.4: Enhanced badge — Estimated price --- */
 .estimated-price {
+  display: inline-block;
   font-size: 0.6rem;
+  font-weight: 600;
+  font-style: normal;
   color: var(--text-muted);
-  margin-left: 0.25rem;
-  font-style: italic;
+  background: rgba(255, 255, 255, 0.06);
+  padding: 0.1rem 0.4rem;
+  border-radius: 999px;
+  margin-left: 0.35rem;
+  cursor: pointer;
+  vertical-align: middle;
 }
 
 /* --- v14.8: Section actions flex container --- */
@@ -2009,9 +2024,6 @@ input[type="datetime-local"] {
 .tank-capital-section { margin-top:0.75rem; padding:0.75rem; border-radius:var(--radius-sm); background:rgba(255,255,255,0.03); border:1px solid var(--glass-border); }
 .tank-capital-section h4 { font-size:0.8rem; color:var(--text-muted); margin-bottom:0.35rem; }
 .tank-capital-text { font-size:0.8rem; color:var(--text-secondary); line-height:1.4; margin:0; }
-
-/* v15.1: Estimated price clickable */
-.estimated-price { cursor:pointer; }
 
 /* --- v15.2: Vehicle selector list --- */
 .vehicle-selector-list { display:flex; flex-direction:column; gap:0.5rem; }
