@@ -158,7 +158,7 @@
           <h1>Naftometro</h1>
           <p class="subtitle">Gestion de nafta compartida</p>
           <div class="header-actions">
-            <button id="btn-add-trip-home" class="btn btn-secondary">+ Agregar viaje</button>
+            <button id="btn-add-trip-home" class="btn btn-secondary">+ Registrar viaje</button>
             <button id="btn-add-vehicle" class="btn btn-primary">+ Agregar vehiculo</button>
           </div>
         </header>
@@ -487,6 +487,17 @@
           <span class="btn-loader hidden"></span>
         </button>
       </form>
+    </div>
+  </div>
+
+  <!-- v15.2: Vehicle Selector Modal -->
+  <div id="vehicle-selector-modal" class="modal-overlay hidden">
+    <div class="modal glass-card modal-sm">
+      <div class="modal-header">
+        <h3>Seleccionar vehiculo</h3>
+        <button id="btn-close-vehicle-selector" class="btn-icon">&times;</button>
+      </div>
+      <div id="vehicle-selector-list" class="vehicle-selector-list"></div>
     </div>
   </div>
 

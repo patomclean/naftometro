@@ -1955,3 +1955,8 @@ input[type="datetime-local"] {
 
 /* v15.1: Estimated price clickable */
 .estimated-price { cursor:pointer; }
+
+/* --- v15.2: Vehicle selector list --- */
+.vehicle-selector-list { display:flex; flex-direction:column; gap:0.5rem; }
+.vehicle-selector-item { width:100%; padding:0.75rem 1rem; border-radius:var(--radius-sm); border:1px solid var(--glass-border); background:rgba(255,255,255,0.03); color:var(--text-primary); font-size:0.9rem; cursor:pointer; font-family:var(--font-family); text-align:left; min-height:44px; }
+.vehicle-selector-item:active { background:rgba(255,255,255,0.08); }

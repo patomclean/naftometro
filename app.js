@@ -222,6 +222,9 @@ const dom = {
   // v15.1: Tank capital
   tankCapitalSection: $('#tank-capital-section'),
   tankCapitalText: $('#tank-capital-text'),
+  // v15.2: Vehicle selector
+  vehicleSelectorModal: $('#vehicle-selector-modal'),
+  vehicleSelectorList: $('#vehicle-selector-list'),
 };
 
 // ============================================================
@@ -2187,6 +2190,24 @@ function closeTripModal() {
   state.editingTripId = null;
 }
 
+// v15.2: Vehicle selector modal for Home flow
+function openVehicleSelector(onSelect) {
+  dom.vehicleSelectorList.innerHTML = '';
+  state.vehicles.forEach(v => {
+    const btn = document.createElement('button');
+    btn.className = 'vehicle-selector-item';
+    btn.textContent = v.name;
+    btn.addEventListener('click', async () => {
+      toggleHidden(dom.vehicleSelectorModal, true);
+      await selectVehicle(v.id);
+      if (onSelect) onSelect();
+      haptic();
+    });
+    dom.vehicleSelectorList.appendChild(btn);
+  });
+  toggleHidden(dom.vehicleSelectorModal, false);
+}
+
 async function handlePaymentSubmit(e) {
   e.preventDefault();
   const btn = dom.btnSubmitPayment;
@@ -2765,17 +2786,26 @@ function bindEvents() {
   // Add vehicle
   $('#btn-add-vehicle').addEventListener('click', () => openVehicleModal('add'));
 
-  // Add trip from Home
+  // v15.2: Smart trip registration from Home
   $('#btn-add-trip-home').addEventListener('click', async () => {
-    const vehicleId = state.activeVehicleId || state.lastVisitedVehicleId || (state.vehicles.length === 1 ? state.vehicles[0].id : null);
+    if (state.vehicles.length === 0) {
+      showToast('Crea un vehiculo primero', 'error');
+      return;
+    }
+    if (state.vehicles.length === 1) {
+      await selectVehicle(state.vehicles[0].id);
+      openTripModal();
+      haptic();
+      return;
+    }
+    // >1 vehicles: try remembered, else show selector
+    const vehicleId = state.activeVehicleId || state.lastVisitedVehicleId;
     if (vehicleId) {
       await selectVehicle(vehicleId);
       openTripModal();
       haptic();
-    } else if (state.vehicles.length > 1) {
-      showToast('Selecciona un vehiculo primero', 'error');
     } else {
-      showToast('Agrega un vehiculo primero', 'error');
+      openVehicleSelector(() => openTripModal());
     }
   });
 
@@ -2873,6 +2903,12 @@ function bindEvents() {
   $('#btn-close-photo-viewer').addEventListener('click', () => toggleHidden(dom.photoViewerModal, true));
   dom.photoViewerModal.addEventListener('click', (e) => {
     if (e.target === dom.photoViewerModal) toggleHidden(dom.photoViewerModal, true);
+  });
+
+  // v15.2: Vehicle selector close
+  $('#btn-close-vehicle-selector').addEventListener('click', () => toggleHidden(dom.vehicleSelectorModal, true));
+  dom.vehicleSelectorModal.addEventListener('click', (e) => {
+    if (e.target === dom.vehicleSelectorModal) toggleHidden(dom.vehicleSelectorModal, true);
   });
 
   // Smart auto-calc: Monto Total is the anchor (never auto-recalculated)
