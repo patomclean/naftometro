@@ -275,6 +275,8 @@ async function uploadTicketPhoto(file, vehicleId) {
 
 // v15: Open full-screen photo viewer
 function openPhotoViewer(url) {
+  // v15.5: Close any open popups
+  document.querySelectorAll('.payment-breakdown-popup').forEach(p => p.remove());
   dom.photoViewerImg.src = url;
   toggleHidden(dom.photoViewerModal, false);
 }
@@ -508,14 +510,6 @@ function navigateTo(tab) {
     }
   }
 
-  // v15.4: Scroll reset — rAF-based for smooth native feel
-  const viewMap = { detail: '#view-detail', home: '#view-home', dashboard: '#view-dashboard' };
-  const targetView = $(viewMap[tab]);
-  if (targetView) {
-    requestAnimationFrame(() => {
-      targetView.scrollTop = 0;
-    });
-  }
 
   updateActiveTab(tab);
 }
@@ -586,6 +580,19 @@ function initSwipeGesture() {
     tracking = false;
     swiping = false;
   }, { passive: true });
+}
+
+// v15.5: IntersectionObserver-based scroll reset for iOS
+function initScrollObserver() {
+  const views = document.querySelectorAll('.view');
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        entry.target.scrollTop = 0;
+      }
+    });
+  }, { threshold: 0.5 });
+  views.forEach(v => observer.observe(v));
 }
 
 // ============================================================
@@ -2062,6 +2069,8 @@ function handleClearPilotAccount(driver) {
 // --- Payment Modal ---
 
 function openPaymentModal(editId) {
+  // v15.5: Close any open popups
+  document.querySelectorAll('.payment-breakdown-popup').forEach(p => p.remove());
   state.settlementMode = false;
   state.settlementDriver = null;
   state.editingPaymentId = editId || null;
@@ -3029,6 +3038,7 @@ async function init() {
   populateFormOptions();
   bindEvents();
   initSwipeGesture();
+  initScrollObserver();
 
   // Show detail empty state by default
   renderVehicleDetail();
