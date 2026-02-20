@@ -1,4 +1,4 @@
-console.log("🚀 Naftómetro v15.51 cargado correctamente");
+console.log("🚀 Naftómetro v15.6 cargado correctamente");
 
 // ============================================================
 // 1. CONSTANTS & CONFIGURATION
@@ -513,6 +513,11 @@ function navigateTo(tab) {
   }
 
 
+  // v15.6: Post-transition scroll reset targeting .view-content
+  setTimeout(() => {
+    document.querySelectorAll('.view-content').forEach(vc => vc.scrollTop = 0);
+  }, 150);
+
   updateActiveTab(tab);
 }
 
@@ -584,18 +589,6 @@ function initSwipeGesture() {
   }, { passive: true });
 }
 
-// v15.5: IntersectionObserver-based scroll reset for iOS
-function initScrollObserver() {
-  const views = document.querySelectorAll('.view');
-  const observer = new IntersectionObserver((entries) => {
-    entries.forEach(entry => {
-      if (entry.isIntersecting) {
-        entry.target.scrollTop = 0;
-      }
-    });
-  }, { threshold: 0.5 });
-  views.forEach(v => observer.observe(v));
-}
 
 // ============================================================
 // 8. SUPABASE DATA FUNCTIONS (CRUD)
@@ -3040,7 +3033,6 @@ async function init() {
   populateFormOptions();
   bindEvents();
   initSwipeGesture();
-  initScrollObserver();
 
   // Show detail empty state by default
   renderVehicleDetail();

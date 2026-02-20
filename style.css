@@ -85,9 +85,9 @@ body {
 
 .view {
   width: 33.333%;
-  min-height: 100vh;
-  min-height: 100dvh;
-  overflow-y: auto;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
 }
 
 .view-content {
@@ -98,6 +98,9 @@ body {
   padding-bottom: calc(var(--nav-height) + var(--safe-bottom) + 1.5rem);
   padding-left: calc(1rem + var(--safe-left));
   padding-right: calc(1rem + var(--safe-right));
+  height: 100%;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 /* --- Bottom Navigation Bar --- */
@@ -1412,19 +1415,25 @@ h3 {
 
 /* --- Responsive --- */
 
-/* --- v15.3: Mobile adaptations (≤768px) --- */
+/* --- v15.6: Mobile adaptations (≤768px) --- */
 @media (max-width: 768px) {
-  /* Payment cards: wrap metadata to avoid overflow */
+  /* Payment cards: grid layout to kill Safari vertical text bug */
   .payment-item {
-    flex-wrap: wrap;
-    gap: 0.5rem;
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    gap: 0.4rem 0.5rem;
     padding: 0.6rem;
+    align-items: center;
+  }
+  .payment-item .payment-info {
+    min-width: 0;
   }
   .payment-item .payment-meta {
+    grid-column: 1 / -1;
     font-size: 0.7rem;
     line-height: 1.4;
-    flex-basis: 100% !important;
-    min-width: 100% !important;
+    margin-bottom: 0.15rem;
+    order: -1;
   }
   .payment-item .payment-amount {
     font-size: 0.85rem;
