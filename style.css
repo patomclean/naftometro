@@ -1128,6 +1128,7 @@ select option {
   font-size: 1rem;
   flex-shrink: 0;
   line-height: 1;
+  display: inline-flex;
 }
 .settlement-amount {
   color: var(--color-primary) !important;
@@ -1180,6 +1181,7 @@ select option {
   height: 8px;
   border-radius: 50%;
   flex-shrink: 0;
+  display: inline-block;
 }
 
 /* --- Utility --- */
@@ -1362,8 +1364,8 @@ h3 {
 
 .payment-item {
   display: flex;
-  align-items: center;
-  gap: 0.75rem;
+  flex-direction: column;
+  gap: 0.35rem;
   padding: 0.6rem 0.75rem;
   background: rgba(255, 255, 255, 0.03);
   border-radius: var(--radius-sm);
@@ -1371,10 +1373,53 @@ h3 {
   font-size: 0.82rem;
 }
 
-.payment-item .payment-info { flex: 1; min-width: 0; }
-.payment-item .payment-driver { font-weight: 600; color: var(--text-primary); }
-.payment-item .payment-meta { font-size: 0.72rem; color: var(--text-muted); }
-.payment-item .payment-amount { font-weight: 700; color: var(--color-success); white-space: nowrap; }
+.payment-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.payment-header .payment-driver {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  min-width: 0;
+}
+.payment-header .payment-amount {
+  font-weight: 700;
+  font-size: 1rem;
+  color: var(--color-success);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.payment-body {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+.meta-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.15rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.meta-pill.pill-full {
+  background: rgba(34, 197, 94, 0.12);
+  color: var(--color-success);
+}
+.payment-footer {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding-top: 0.3rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
 
 /* --- Section Actions (header with multiple buttons) --- */
 .section-actions { display: flex; gap: 0.5rem; }
@@ -1417,26 +1462,15 @@ h3 {
 
 /* --- v15.6: Mobile adaptations (≤768px) --- */
 @media (max-width: 768px) {
-  /* Payment cards: grid layout to kill Safari vertical text bug */
+  /* v15.7: Payment card mobile tweaks */
   .payment-item {
-    display: grid;
-    grid-template-columns: auto 1fr auto;
-    gap: 0.4rem 0.5rem;
-    padding: 0.6rem;
-    align-items: center;
+    padding: 0.5rem 0.6rem;
   }
-  .payment-item .payment-info {
-    min-width: 0;
+  .payment-header .payment-amount {
+    font-size: 0.95rem;
   }
-  .payment-item .payment-meta {
-    grid-column: 1 / -1;
-    font-size: 0.7rem;
-    line-height: 1.4;
-    margin-bottom: 0.15rem;
-    order: -1;
-  }
-  .payment-item .payment-amount {
-    font-size: 0.85rem;
+  .payment-footer {
+    gap: 0.15rem;
   }
 
   /* Trip table: badge spacing */
@@ -1560,9 +1594,9 @@ h3 {
     width: auto;
   }
 
-  /* v15.3: Payment meta smaller on tiny screens */
-  .payment-item .payment-meta {
-    font-size: 0.68rem;
+  /* v15.7: Smaller pills on tiny screens */
+  .meta-pill {
+    font-size: 0.63rem;
   }
 
   /* v15.3: Badge spacing in mobile trip cards */

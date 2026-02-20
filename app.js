@@ -1,4 +1,4 @@
-console.log("🚀 Naftómetro v15.6 cargado correctamente");
+console.log("🚀 Naftómetro v15.7 cargado correctamente");
 
 // ============================================================
 // 1. CONSTANTS & CONFIGURATION
@@ -513,9 +513,11 @@ function navigateTo(tab) {
   }
 
 
-  // v15.6: Post-transition scroll reset targeting .view-content
+  // v15.7: Post-transition scroll reset with instant behavior for iOS
   setTimeout(() => {
-    document.querySelectorAll('.view-content').forEach(vc => vc.scrollTop = 0);
+    document.querySelectorAll('.view-content').forEach(vc => {
+      vc.scrollTo({ top: 0, behavior: 'instant' });
+    });
   }, 150);
 
   updateActiveTab(tab);
@@ -1241,12 +1243,13 @@ function renderPaymentHistory() {
     item.className = 'payment-item' + (isSettlement ? ' payment-item-settlement' : '');
     const driverIdx = vehicleDrivers.indexOf(p.driver);
     const dotColor = PILOT_COLORS[driverIdx >= 0 ? driverIdx % PILOT_COLORS.length : 0];
-    const extraInfo = [];
-    if (p.liters_loaded) extraInfo.push(`${p.liters_loaded} lts`);
-    if (p.price_per_liter) extraInfo.push(`${formatCurrency(p.price_per_liter)}/l`);
-    if (p.is_full_tank) extraInfo.push('Tanque lleno');
-    const metaParts = [formatDate(p.occurred_at || p.created_at), ...extraInfo];
-    if (p.note) metaParts.push(p.note);
+    // v15.7: Build meta pills
+    const pills = [];
+    pills.push(`<span class="meta-pill">${formatDate(p.occurred_at || p.created_at)}</span>`);
+    if (p.liters_loaded) pills.push(`<span class="meta-pill">${p.liters_loaded} lts</span>`);
+    if (p.price_per_liter) pills.push(`<span class="meta-pill">${formatCurrency(p.price_per_liter)}/l</span>`);
+    if (p.is_full_tank) pills.push(`<span class="meta-pill pill-full">Tanque lleno</span>`);
+    if (p.note) pills.push(`<span class="meta-pill">${p.note}</span>`);
 
     // v10: Badge Factura A
     const facturaBadge = (!isSettlement && p.invoice_type === 'Factura A')
@@ -1254,25 +1257,27 @@ function renderPaymentHistory() {
 
     if (isSettlement) {
       item.innerHTML = `
-        <div class="settlement-icon">&#128181;</div>
-        <div class="payment-info">
-          <div class="payment-driver">${p.driver}</div>
-          <div class="payment-meta">${metaParts.join(' · ')}</div>
+        <div class="payment-header">
+          <div class="payment-driver"><span class="settlement-icon">&#128181;</span>${p.driver}</div>
+          <span class="payment-amount settlement-amount">${formatCurrency(p.amount)}</span>
         </div>
-        <span class="payment-amount settlement-amount">${formatCurrency(p.amount)}</span>
+        <div class="payment-body">${pills.join('')}</div>
       `;
     } else {
       item.innerHTML = `
-        <div class="pilot-dot" style="background:${dotColor}"></div>
-        <div class="payment-info">
-          <div class="payment-driver">${p.driver} ${facturaBadge}</div>
-          <div class="payment-meta">${metaParts.join(' · ')}</div>
+        <div class="payment-header">
+          <div class="payment-driver"><span class="pilot-dot" style="background:${dotColor}"></span>${p.driver} ${facturaBadge}</div>
+          <span class="payment-amount">${formatCurrency(p.amount)}</span>
         </div>
-        <span class="payment-amount">${formatCurrency(p.amount)}</span>
+        <div class="payment-body">${pills.join('')}</div>
+        <div class="payment-footer"></div>
       `;
     }
 
-    // v15: Photo evidence icon
+    // v15.7: Append action buttons to footer (or item for settlements)
+    const footer = item.querySelector('.payment-footer');
+    const btnTarget = footer || item;
+
     if (!isSettlement && p.photo_url) {
       const photoBtn = document.createElement('button');
       photoBtn.className = 'btn-icon btn-photo-evidence';
@@ -1282,10 +1287,9 @@ function renderPaymentHistory() {
         e.stopPropagation();
         openPhotoViewer(p.photo_url);
       });
-      item.appendChild(photoBtn);
+      btnTarget.appendChild(photoBtn);
     }
 
-    // v10: Info breakdown button for non-settlement payments
     if (!isSettlement && (p.tax_perceptions > 0 || p.discount_amount > 0 || p.liters_loaded)) {
       const infoBtn = document.createElement('button');
       infoBtn.className = 'btn-info-breakdown';
@@ -1295,10 +1299,9 @@ function renderPaymentHistory() {
         e.stopPropagation();
         showPaymentBreakdown(p);
       });
-      item.appendChild(infoBtn);
+      btnTarget.appendChild(infoBtn);
     }
 
-    // v12: Edit button for non-settlement payments
     if (!isSettlement) {
       const editBtn = document.createElement('button');
       editBtn.className = 'btn-icon btn-icon-edit';
@@ -1308,7 +1311,7 @@ function renderPaymentHistory() {
         e.stopPropagation();
         openPaymentModal(p.id);
       });
-      item.appendChild(editBtn);
+      btnTarget.appendChild(editBtn);
     }
 
     const deleteBtn = document.createElement('button');
@@ -1317,7 +1320,7 @@ function renderPaymentHistory() {
     deleteBtn.innerHTML = '&times;';
     deleteBtn.style.fontSize = '1.1rem';
     deleteBtn.addEventListener('click', () => handleDeletePayment(p));
-    item.appendChild(deleteBtn);
+    btnTarget.appendChild(deleteBtn);
 
     dom.paymentsList.appendChild(item);
   });
