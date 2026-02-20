@@ -1423,8 +1423,8 @@ h3 {
   .payment-item .payment-meta {
     font-size: 0.7rem;
     line-height: 1.4;
-    flex-basis: 100%;
-    min-width: 100%;
+    flex-basis: 100% !important;
+    min-width: 100% !important;
   }
   .payment-item .payment-amount {
     font-size: 0.85rem;
