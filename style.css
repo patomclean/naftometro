@@ -85,9 +85,8 @@ body {
 
 .view {
   width: 33.333%;
-  height: 100vh;
-  height: 100dvh;
-  overflow: hidden;
+  height: auto;
+  overflow: visible;
 }
 
 .view-content {
@@ -98,9 +97,6 @@ body {
   padding-bottom: calc(var(--nav-height) + var(--safe-bottom) + 1.5rem);
   padding-left: calc(1rem + var(--safe-left));
   padding-right: calc(1rem + var(--safe-right));
-  height: 100%;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
 }
 
 /* --- Bottom Navigation Bar --- */
@@ -1462,6 +1458,18 @@ h3 {
 
 /* --- v15.6: Mobile adaptations (≤768px) --- */
 @media (max-width: 768px) {
+  /* v15.8: iOS independent scroll — only on mobile */
+  .view {
+    height: 100vh;
+    height: 100dvh;
+    overflow: hidden;
+  }
+  .view-content {
+    height: 100%;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
   /* v15.7: Payment card mobile tweaks */
   .payment-item {
     padding: 0.5rem 0.6rem;
