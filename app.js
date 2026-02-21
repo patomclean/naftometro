@@ -1,4 +1,4 @@
-console.log("🚀 Naftómetro v16.3 cargado correctamente");
+console.log("🚀 Naftómetro v17.0 cargado correctamente");
 
 // ============================================================
 // 1. CONSTANTS & CONFIGURATION
@@ -103,6 +103,7 @@ const state = {
   balancesExpanded: false,
   pendingPhotoFile: null,
   photoRemoved: false,
+  ledger: [],  // v17: Ledger entries for active vehicle
 };
 
 // ============================================================
@@ -452,8 +453,10 @@ function updatePaymentPriceSummary() {
   toggleHidden(dom.paymentPriceSummary, false);
 }
 
-function calculateCost(km, consumption, fuelPrice) {
-  const liters = km / consumption;
+// v17: correctionFactor multiplies theoretical consumption (>1 = consumes more than spec)
+function calculateCost(km, consumption, fuelPrice, correctionFactor = 1.0) {
+  const adjustedConsumption = consumption / correctionFactor;
+  const liters = km / adjustedConsumption;
   const cost = liters * fuelPrice;
   return { liters: +liters.toFixed(2), cost: +cost.toFixed(2) };
 }
@@ -650,6 +653,54 @@ async function joinVehicleByCode(code) {
   const { data, error } = await db.rpc('join_vehicle_by_code', { code });
   if (error) throw error;
   return data;
+}
+
+// v17: Ledger CRUD — append-only financial journal
+async function fetchLedger(vehicleId) {
+  const { data, error } = await db
+    .from('ledger')
+    .select('*')
+    .eq('vehicle_id', vehicleId)
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return data;
+}
+
+async function insertLedgerEntry(entry) {
+  const { data, error } = await db
+    .from('ledger')
+    .insert(entry)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+// v17: Migrate legacy balances to ledger (opening_balance entries)
+async function migrateToLedger(vehicleId, drivers) {
+  const [trips, payments] = await Promise.all([
+    fetchTrips(vehicleId),
+    fetchPayments(vehicleId)
+  ]);
+
+  const credits = {};
+  const debits = {};
+  drivers.forEach(d => { credits[d] = 0; debits[d] = 0; });
+  payments.forEach(p => { if (credits[p.driver] !== undefined) credits[p.driver] += Number(p.amount); });
+  trips.forEach(t => { if (debits[t.driver] !== undefined) debits[t.driver] += Number(t.cost); });
+
+  for (const driver of drivers) {
+    const net = +(credits[driver] - debits[driver]).toFixed(2);
+    if (Math.abs(net) > 0.01) {
+      await insertLedgerEntry({
+        vehicle_id: vehicleId,
+        driver,
+        type: 'opening_balance',
+        amount: net,
+        description: 'Saldo migrado desde sistema legacy v16'
+      });
+    }
+  }
 }
 
 async function fetchTrips(vehicleId) {
@@ -1084,26 +1135,51 @@ function renderBalances() {
   const vehicle = getActiveVehicle();
   const drivers = vehicle ? (vehicle.drivers || []) : [];
 
-  // Créditos: cargas de combustible (payments)
-  const credits = {};
-  // Débitos: consumo por viajes (trips)
-  const debits = {};
-  drivers.forEach((d) => { credits[d] = 0; debits[d] = 0; });
+  // v17: Balance from ledger (single source of truth post-migration)
+  const netByDriver = {};
+  drivers.forEach(d => { netByDriver[d] = 0; });
 
-  state.payments.forEach((p) => {
-    if (credits[p.driver] !== undefined) credits[p.driver] += Number(p.amount);
-  });
-  state.trips.forEach((t) => {
-    if (debits[t.driver] !== undefined) debits[t.driver] += Number(t.cost);
-  });
+  if (state.ledger.length > 0) {
+    // Ledger-based balance
+    state.ledger.forEach(entry => {
+      if (netByDriver[entry.driver] !== undefined) {
+        netByDriver[entry.driver] += Number(entry.amount);
+      }
+    });
+  } else {
+    // Legacy fallback (pre-migration vehicles)
+    state.payments.forEach(p => {
+      if (netByDriver[p.driver] !== undefined) netByDriver[p.driver] += Number(p.amount);
+    });
+    state.trips.forEach(t => {
+      if (netByDriver[t.driver] !== undefined) netByDriver[t.driver] -= Number(t.cost);
+    });
+  }
 
   dom.balancesGrid.innerHTML = '';
   const balances = [];
 
+  // v17: Compute credits and debits for expanded detail view
+  const creditsByDriver = {};
+  const debitsByDriver = {};
+  drivers.forEach(d => { creditsByDriver[d] = 0; debitsByDriver[d] = 0; });
+  if (state.ledger.length > 0) {
+    state.ledger.forEach(entry => {
+      if (entry.amount > 0 && creditsByDriver[entry.driver] !== undefined) {
+        creditsByDriver[entry.driver] += Number(entry.amount);
+      } else if (entry.amount < 0 && debitsByDriver[entry.driver] !== undefined) {
+        debitsByDriver[entry.driver] += Math.abs(Number(entry.amount));
+      }
+    });
+  } else {
+    state.payments.forEach(p => { if (creditsByDriver[p.driver] !== undefined) creditsByDriver[p.driver] += Number(p.amount); });
+    state.trips.forEach(t => { if (debitsByDriver[t.driver] !== undefined) debitsByDriver[t.driver] += Number(t.cost); });
+  }
+
   drivers.forEach((driver, idx) => {
-    const credit = credits[driver];
-    const debit = debits[driver];
-    const net = +(credit - debit).toFixed(2);
+    const net = +netByDriver[driver].toFixed(2);
+    const credit = creditsByDriver[driver];
+    const debit = debitsByDriver[driver];
     balances.push({ driver, net });
     const pilotColor = PILOT_COLORS[idx % PILOT_COLORS.length];
 
@@ -1835,12 +1911,22 @@ async function selectVehicle(vehicleId) {
   toggleHidden(dom.tripsEmpty, true);
 
   try {
-    const [trips, payments] = await Promise.all([
+    const vehicle = getActiveVehicle();
+    const [trips, payments, ledger] = await Promise.all([
       fetchTrips(vehicleId),
       fetchPayments(vehicleId),
+      fetchLedger(vehicleId),
     ]);
     state.trips = trips;
     state.payments = payments;
+    state.ledger = ledger;
+
+    // v17: Auto-migrate legacy balances to ledger on first load
+    if (state.ledger.length === 0 && (trips.length > 0 || payments.length > 0) && vehicle) {
+      await migrateToLedger(vehicleId, vehicle.drivers || []);
+      state.ledger = await fetchLedger(vehicleId);
+    }
+
     renderTrips();
     renderSummary();
     renderBalances();
@@ -2044,15 +2130,39 @@ function handleClearTripsClick() {
 
 // --- Settle Pilot Account ---
 
+// v17: Find the main creditor for a debtor
+function findMainCreditor(debtorDriver, drivers) {
+  const nets = {};
+  drivers.forEach(d => { nets[d] = 0; });
+  if (state.ledger.length > 0) {
+    state.ledger.forEach(e => { if (nets[e.driver] !== undefined) nets[e.driver] += Number(e.amount); });
+  } else {
+    state.payments.forEach(p => { if (nets[p.driver] !== undefined) nets[p.driver] += Number(p.amount); });
+    state.trips.forEach(t => { if (nets[t.driver] !== undefined) nets[t.driver] -= Number(t.cost); });
+  }
+  // Find the driver with highest positive balance (biggest creditor)
+  let maxNet = 0, creditor = null;
+  for (const [d, n] of Object.entries(nets)) {
+    if (d !== debtorDriver && n > maxNet) { maxNet = n; creditor = d; }
+  }
+  return creditor;
+}
+
 function handleClearPilotAccount(driver) {
   const vehicle = getActiveVehicle();
   if (!vehicle) return;
 
-  // Calcular deuda
-  let credit = 0, debit = 0;
-  state.payments.forEach(p => { if (p.driver === driver) credit += Number(p.amount); });
-  state.trips.forEach(t => { if (t.driver === driver) debit += Number(t.cost); });
-  const net = +(credit - debit).toFixed(2);
+  // v17: Calculate debt from ledger
+  let net = 0;
+  if (state.ledger.length > 0) {
+    state.ledger.forEach(entry => { if (entry.driver === driver) net += Number(entry.amount); });
+    net = +net.toFixed(2);
+  } else {
+    let credit = 0, debit = 0;
+    state.payments.forEach(p => { if (p.driver === driver) credit += Number(p.amount); });
+    state.trips.forEach(t => { if (t.driver === driver) debit += Number(t.cost); });
+    net = +(credit - debit).toFixed(2);
+  }
 
   if (net >= 0) {
     showToast(`${driver} no tiene deuda pendiente`, 'error');
@@ -2073,7 +2183,9 @@ function handleClearPilotAccount(driver) {
   dom.paymentLiters.value = '';
   dom.paymentPricePerLiter.value = '';
   dom.paymentFullTank.checked = false;
-  dom.paymentNote.value = 'Saldado de deuda a: ';
+  // v17: Auto-determine creditor from balances
+  const creditorDriver = findMainCreditor(driver, vehicle.drivers || []);
+  dom.paymentNote.value = `Saldado de deuda a: ${creditorDriver || ''}`;
 
   // Ocultar campos de combustible
   document.querySelectorAll('.settlement-hide').forEach(el => el.classList.add('hidden'));
@@ -2333,17 +2445,46 @@ async function handlePaymentSubmit(e) {
       state.payments = await fetchPayments(state.activeVehicleId);
       await recalculateGlobalConsumption();
     } else {
-      await createPayment(paymentData);
+      const createdPayment = await createPayment(paymentData);
+
+      // v17: Insert ledger entries
       if (isSettlement) {
+        // Double-entry for settlements
+        const creditorMatch = (dom.paymentNote.value || '').match(/Saldado de deuda a:\s*(.+)/i);
+        const creditorDriver = creditorMatch ? creditorMatch[1].trim() : null;
+        await insertLedgerEntry({
+          vehicle_id: state.activeVehicleId, driver,
+          type: 'transfer', amount: +amount,
+          ref_id: createdPayment.id,
+          description: creditorDriver ? `Saldo pagado a ${creditorDriver}` : 'Transferencia'
+        });
+        if (creditorDriver) {
+          await insertLedgerEntry({
+            vehicle_id: state.activeVehicleId, driver: creditorDriver,
+            type: 'transfer', amount: -(+amount),
+            ref_id: createdPayment.id,
+            description: `Saldo recibido de ${driver}`
+          });
+        }
         showToast(`Saldo de ${formatCurrency(amount)} registrado para ${driver}`);
-      } else if (!originalLiters) {
-        showToast(`Carga registrada (${litersLoaded} lts estimados a ${formatCurrency(pricePerLiter)}/l)`);
       } else {
-        showToast('Carga registrada');
+        // Fuel payment = credit
+        await insertLedgerEntry({
+          vehicle_id: state.activeVehicleId, driver,
+          type: 'fuel_payment', amount: +amount,
+          ref_id: createdPayment.id,
+          description: litersLoaded ? `Carga ${litersLoaded} lts` : `Pago combustible`
+        });
+        if (!originalLiters) {
+          showToast(`Carga registrada (${litersLoaded} lts estimados a ${formatCurrency(pricePerLiter)}/l)`);
+        } else {
+          showToast('Carga registrada');
+        }
       }
     }
     haptic();
     state.payments = await fetchPayments(state.activeVehicleId);
+    state.ledger = await fetchLedger(state.activeVehicleId); // v17
     state.dashboardLoaded = false;
     renderBalances();
     renderPaymentHistory();
@@ -2351,21 +2492,35 @@ async function handlePaymentSubmit(e) {
 
     // Solo para cargas reales de combustible (no saldados)
     if (!isSettlement) {
-      // v11: Precio Ponderado Dinámico (PPD)
+      // v17: PPP Persistente (Precio Promedio Ponderado)
       if (litersLoaded && litersLoaded > 0) {
         const vehicle = getActiveVehicle();
         if (vehicle) {
-          const tankBefore = calculateTankLevel() - litersLoaded;
-          const currentPrice = getLatestFuelPrice(vehicle);
-          const weightedPrice = calculateWeightedPrice(
-            tankBefore, currentPrice, amount, litersLoaded
-          );
-          if (vehicle.fuel_price !== weightedPrice) {
-            await updateVehicle(state.activeVehicleId, { fuel_price: weightedPrice });
-            state.vehicles = await fetchVehicles();
-            renderVehicleDetail();
-            renderVehicleCards();
+          const oldPPP = vehicle.current_ppp > 0 ? vehicle.current_ppp : getLatestFuelPrice(vehicle);
+          const oldLiters = Math.max(vehicle.virtual_liters || 0, 0);
+          const newTotalLiters = oldLiters + litersLoaded;
+          let newPPP;
+          if (newTotalLiters <= 0) {
+            newPPP = effectivePrice || pricePerLiter || vehicle.fuel_price;
+          } else {
+            newPPP = +((oldLiters * oldPPP + amount) / newTotalLiters).toFixed(2);
           }
+          const updates = {
+            current_ppp: newPPP,
+            virtual_liters: +newTotalLiters.toFixed(2),
+            fuel_price: newPPP // mantener compatibilidad
+          };
+          if (isFullTank) {
+            const tankCap = getVehicleTankCapacity(vehicle);
+            if (tankCap) {
+              updates.virtual_liters = tankCap;
+              updates.last_full_tank_at = paymentData.occurred_at;
+            }
+          }
+          await updateVehicle(state.activeVehicleId, updates);
+          state.vehicles = await fetchVehicles();
+          renderVehicleDetail();
+          renderVehicleCards();
         }
       }
 
@@ -2469,9 +2624,34 @@ async function performTankAudit() {
   const adjustmentAmount = +(totalNewCost - totalOldCost).toFixed(2);
   state.trips = await fetchTrips(state.activeVehicleId);
 
+  // v17: Insert ledger tank_audit_adjustment entries per driver (proportional to km driven)
+  if (Math.abs(adjustmentAmount) > 0.01) {
+    const driverKm = {};
+    cycleTrips.forEach(t => { driverKm[t.driver] = (driverKm[t.driver] || 0) + Number(t.km); });
+    const totalCycleKm = Object.values(driverKm).reduce((a, b) => a + b, 0);
+    for (const [drv, km] of Object.entries(driverKm)) {
+      const proportion = km / totalCycleKm;
+      const driverAdj = +(adjustmentAmount * proportion).toFixed(2);
+      if (Math.abs(driverAdj) > 0.01) {
+        await insertLedgerEntry({
+          vehicle_id: vehicle.id, driver: drv,
+          type: 'tank_audit_adjustment',
+          amount: -(+driverAdj),
+          description: `Ajuste auditoria tanque (factor: ${deviationFactor.toFixed(3)})`
+        });
+      }
+    }
+    state.ledger = await fetchLedger(state.activeVehicleId);
+  }
+
+  // v17: Update correction_factor (Total Real Liters / Total Theoretical Liters)
+  const newCorrectionFactor = +(deviationFactor).toFixed(4);
+  await updateVehicle(state.activeVehicleId, { correction_factor: newCorrectionFactor });
+
   // Phase 2: Reconstructive memory — recalculate from all closed cycles
   await recalculateGlobalConsumption();
 
+  state.vehicles = await fetchVehicles(); // v17: refresh correction_factor
   // Re-render
   renderTrips();
   renderSummary();
@@ -2598,7 +2778,10 @@ function handleTripKmInput() {
   if (vehicle && km > 0) {
     const driveType = dom.tripDriveType ? dom.tripDriveType.value : 'Mixto';
     const consumption = getConsumptionForDriveType(vehicle, driveType);
-    const { cost } = calculateCost(km, consumption, getLatestFuelPrice(vehicle));
+    // v17: Use PPP and correction_factor in preview
+    const tripPrice = vehicle.current_ppp > 0 ? vehicle.current_ppp : getLatestFuelPrice(vehicle);
+    const corrFactor = vehicle.correction_factor || 1.0;
+    const { cost } = calculateCost(km, consumption, tripPrice, corrFactor);
     dom.costPreviewValue.textContent = formatCurrency(cost);
   } else {
     dom.costPreviewValue.textContent = '$0,00';
@@ -2625,7 +2808,10 @@ async function handleTripSubmit(e) {
   // v13: Drive type selection
   const driveType = dom.tripDriveType ? dom.tripDriveType.value : 'Mixto';
   const consumption = getConsumptionForDriveType(vehicle, driveType);
-  const { liters, cost } = calculateCost(km, consumption, getLatestFuelPrice(vehicle));
+  // v17: Use PPP as price source, correction_factor for adjusted consumption
+  const tripPrice = vehicle.current_ppp > 0 ? vehicle.current_ppp : getLatestFuelPrice(vehicle);
+  const corrFactor = vehicle.correction_factor || 1.0;
+  const { liters, cost } = calculateCost(km, consumption, tripPrice, corrFactor);
 
   // v14.6: Temporal dimension
   const occurredAt = dom.tripOccurredAt.value
@@ -2655,7 +2841,7 @@ async function handleTripSubmit(e) {
       });
       showToast('Viaje actualizado');
     } else {
-      await createTrip({
+      const createdTrip = await createTrip({
         vehicle_id: state.activeVehicleId,
         driver,
         km,
@@ -2665,11 +2851,26 @@ async function handleTripSubmit(e) {
         drive_type: driveType,
         occurred_at: occurredAt,
       });
+      // v17: Insert ledger entry (trip_cost = debit)
+      await insertLedgerEntry({
+        vehicle_id: state.activeVehicleId,
+        driver,
+        type: 'trip_cost',
+        amount: -(+cost),
+        ref_id: createdTrip.id,
+        description: `Viaje ${km} km (${driveType})`
+      });
+      // v17: Decrease virtual liters
+      const newVL = +((vehicle.virtual_liters || 0) - liters).toFixed(2);
+      await updateVehicle(state.activeVehicleId, { virtual_liters: newVL });
+      vehicle.virtual_liters = newVL;
       showToast('Viaje registrado');
     }
     haptic();
     closeTripModal();
     state.trips = await fetchTrips(state.activeVehicleId);
+    state.ledger = await fetchLedger(state.activeVehicleId); // v17
+    state.vehicles = await fetchVehicles(); // v17: refresh PPP/virtual_liters
     state.dashboardLoaded = false;
     renderTrips();
     renderSummary();
@@ -2718,16 +2919,22 @@ function generateSummaryText() {
   if (!vehicle) return '';
   const drivers = vehicle.drivers || [];
 
-  const credits = {}, debits = {};
-  drivers.forEach((d) => { credits[d] = 0; debits[d] = 0; });
-  state.payments.forEach((p) => { if (credits[p.driver] !== undefined) credits[p.driver] += Number(p.amount); });
-  state.trips.forEach((t) => { if (debits[t.driver] !== undefined) debits[t.driver] += Number(t.cost); });
+  // v17: Use ledger for balance calculation
+  const netByDriver = {};
+  drivers.forEach(d => { netByDriver[d] = 0; });
+  if (state.ledger.length > 0) {
+    state.ledger.forEach(entry => {
+      if (netByDriver[entry.driver] !== undefined) netByDriver[entry.driver] += Number(entry.amount);
+    });
+  } else {
+    state.payments.forEach(p => { if (netByDriver[p.driver] !== undefined) netByDriver[p.driver] += Number(p.amount); });
+    state.trips.forEach(t => { if (netByDriver[t.driver] !== undefined) netByDriver[t.driver] -= Number(t.cost); });
+  }
 
-  let totalConsumo = 0;
+  let totalConsumo = state.trips.reduce((sum, t) => sum + Number(t.cost), 0);
   const balances = [];
   drivers.forEach((d) => {
-    totalConsumo += debits[d];
-    balances.push({ driver: d, net: +(credits[d] - debits[d]).toFixed(2) });
+    balances.push({ driver: d, net: +netByDriver[d].toFixed(2) });
   });
 
   // Clearing algorithm
