@@ -1,4 +1,4 @@
-console.log("🚀 Naftómetro v18.2 cargado correctamente");
+console.log("🚀 Naftómetro v18.3 cargado correctamente");
 
 // ============================================================
 // 1. CONSTANTS & CONFIGURATION
@@ -3640,7 +3640,12 @@ async function init() {
   document.getElementById('btn-close-auth-modal').addEventListener('click', closeAuthModal);
   dom.authModal.addEventListener('click', (e) => { if (e.target === dom.authModal) closeAuthModal(); });
   document.getElementById('btn-auth-google').addEventListener('click', () => {
-    db.auth.signInWithOAuth({ provider: 'google' });
+    db.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: window.location.origin + window.location.pathname
+      }
+    });
   });
   document.getElementById('btn-auth-toggle').addEventListener('click', () => {
     authMode = authMode === 'login' ? 'signup' : 'login';
