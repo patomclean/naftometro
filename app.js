@@ -1,4 +1,4 @@
-console.log("🚀 Naftómetro v18.0 cargado correctamente");
+console.log("🚀 Naftómetro v18.1 cargado correctamente");
 
 // ============================================================
 // 1. CONSTANTS & CONFIGURATION
@@ -707,8 +707,7 @@ async function updateProfile(updates) {
   const { data: { user } } = await db.auth.getUser();
   const { data, error } = await db
     .from('profiles')
-    .update(updates)
-    .eq('id', user.id)
+    .upsert({ id: user.id, ...updates })
     .select()
     .single();
   if (error) throw error;
