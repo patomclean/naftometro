@@ -1,4 +1,4 @@
-console.log("🚀 Naftómetro v18.1 cargado correctamente");
+console.log("🚀 Naftómetro v18.2 cargado correctamente");
 
 // ============================================================
 // 1. CONSTANTS & CONFIGURATION
@@ -3102,6 +3102,13 @@ async function handleJoinByCode() {
       state.vehicles = await fetchVehicles();
       await renderVehicleCards();
       renderVehicleDetail();
+
+      // v18.2: Show avatar claim for the joined vehicle
+      const vehicleId = result.vehicle_id;
+      const vehicle = state.vehicles.find(v => v.id === vehicleId);
+      if (vehicle) {
+        await showAvatarClaimModal(vehicleId, vehicle.drivers || []);
+      }
     } else {
       showToast(result?.error || 'Codigo invalido', 'error');
     }
