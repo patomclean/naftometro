@@ -1,4 +1,4 @@
-const CACHE_NAME = 'naftometro-v16.2';
+const CACHE_NAME = 'naftometro-v16.3';
 const STATIC_ASSETS = [
   '/',
   '/index.html',

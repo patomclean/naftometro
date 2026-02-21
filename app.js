@@ -1,4 +1,4 @@
-console.log("🚀 Naftómetro v16.2 cargado correctamente");
+console.log("🚀 Naftómetro v16.3 cargado correctamente");
 
 // ============================================================
 // 1. CONSTANTS & CONFIGURATION
@@ -2794,7 +2794,8 @@ async function handleInvite() {
       vehicle.invite_code = code;
     }
 
-    const inviteText = `Unite a mi vehiculo "${vehicle.name}" en Naftometro! Codigo: ${code}`;
+    const inviteUrl = `https://naftometro.vercel.app/?invite=${code}`;
+    const inviteText = `Unite a mi vehiculo "${vehicle.name}" en Naftometro!\n${inviteUrl}`;
 
     if (navigator.share) {
       try {
@@ -3162,7 +3163,44 @@ async function loadAppData() {
   }
 }
 
+// v16.3: Check URL for invite parameter and save for auto-join
+function checkUrlParameters() {
+  const params = new URLSearchParams(window.location.search);
+  const inviteCode = params.get('invite');
+  if (inviteCode) {
+    sessionStorage.setItem('naftometro_pending_invite', inviteCode.trim().toUpperCase());
+    // Clean URL without reload
+    window.history.replaceState({}, '', window.location.pathname);
+  }
+}
+
+// v16.3: Process pending invite after session is active
+async function processPendingInvite() {
+  const code = sessionStorage.getItem('naftometro_pending_invite');
+  if (!code) return;
+  sessionStorage.removeItem('naftometro_pending_invite');
+
+  try {
+    const result = await joinVehicleByCode(code);
+    if (result && result.success) {
+      showToast('Te uniste con exito al vehiculo!');
+      haptic();
+      state.vehicles = await fetchVehicles();
+      await renderVehicleCards();
+      renderVehicleDetail();
+    } else {
+      showToast(result?.error || 'Codigo de invitacion invalido', 'error');
+    }
+  } catch (err) {
+    console.error('Auto-join error:', err);
+    showToast('Error al unirse al vehiculo', 'error');
+  }
+}
+
 async function init() {
+  // v16.3: Capture invite code from URL before anything else
+  checkUrlParameters();
+
   // Register service worker
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('/sw.js').catch(() => {});
@@ -3195,6 +3233,7 @@ async function init() {
   if (session) {
     showApp();
     await loadAppData();
+    await processPendingInvite(); // v16.3
   } else {
     showLogin();
   }
@@ -3206,6 +3245,7 @@ async function init() {
       if (state.vehicles.length === 0) {
         await loadAppData();
       }
+      await processPendingInvite(); // v16.3
     } else if (event === 'SIGNED_OUT') {
       state.vehicles = [];
       state.activeVehicleId = null;
