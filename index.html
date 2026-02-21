@@ -10,7 +10,7 @@
   <link rel="manifest" href="manifest.json">
   <link rel="apple-touch-icon" href="icons/icon-192.svg">
   <link rel="icon" type="image/svg+xml" href="icons/icon-192.svg">
-  <link rel="stylesheet" href="style.css?v=16.1">
+  <link rel="stylesheet" href="style.css?v=16.2">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
@@ -44,7 +44,8 @@
           <header class="detail-header">
             <h2 id="detail-title"></h2>
             <div class="vehicle-actions">
-              <button id="btn-share" class="btn-icon" title="Compartir">&#8599;</button>
+              <button id="btn-invite" class="btn-icon" title="Invitar">&#128279;</button>
+              <button id="btn-share" class="btn-icon" title="Compartir resumen">&#8599;</button>
               <button id="btn-edit-vehicle" class="btn-icon" title="Editar">&#9998;</button>
               <button id="btn-delete-vehicle" class="btn-icon btn-icon-danger" title="Eliminar">&#128465;</button>
             </div>
@@ -178,6 +179,7 @@
         <div id="no-vehicles-msg" class="empty-state hidden">
           <p>No hay vehiculos cargados.</p>
           <p class="empty-hint">Toca el boton de arriba para agregar uno.</p>
+          <button id="btn-join-by-code" class="btn btn-secondary" style="margin-top: 1rem;">Tengo un codigo de invitacion</button>
         </div>
 
         <div id="home-loading" class="skeleton-grid">
@@ -553,6 +555,6 @@
   <!-- Toast Container -->
   <div id="toast-container" class="toast-container"></div>
 
-  <script src="app.js?v=16.1"></script>
+  <script src="app.js?v=16.2"></script>
 </body>
 </html>

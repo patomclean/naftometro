@@ -1,4 +1,4 @@
-console.log("🚀 Naftómetro v16.1 cargado correctamente");
+console.log("🚀 Naftómetro v16.2 cargado correctamente");
 
 // ============================================================
 // 1. CONSTANTS & CONFIGURATION
@@ -632,6 +632,24 @@ async function deleteVehicle(id) {
     .delete()
     .eq('id', id);
   if (error) throw error;
+}
+
+// v16.2: Generate a short random invite code and save to vehicle
+async function generateInviteCode(vehicleId) {
+  const code = Math.random().toString(36).substring(2, 8).toUpperCase();
+  const { error } = await db
+    .from('vehicles')
+    .update({ invite_code: code })
+    .eq('id', vehicleId);
+  if (error) throw error;
+  return code;
+}
+
+// v16.2: Join vehicle by invitation code (calls server function)
+async function joinVehicleByCode(code) {
+  const { data, error } = await db.rpc('join_vehicle_by_code', { code });
+  if (error) throw error;
+  return data;
 }
 
 async function fetchTrips(vehicleId) {
@@ -1890,6 +1908,8 @@ async function handleVehicleSubmit(e) {
     return;
   }
 
+  // v16.2: Include owner_id for RLS trigger
+  const { data: { session } } = await db.auth.getSession();
   const payload = {
     name: dom.vehicleNameInput.value.trim(),
     model: dom.vehicleModelSelect.value,
@@ -1897,6 +1917,7 @@ async function handleVehicleSubmit(e) {
     fuel_type: dom.vehicleFuelTypeSelect.value,
     fuel_price: fuelPrice,
     drivers,
+    owner_id: session?.user?.id || null,
   };
 
   try {
@@ -2761,6 +2782,61 @@ function generateSummaryText() {
   return text;
 }
 
+// v16.2: Handle invite code generation and sharing
+async function handleInvite() {
+  const vehicle = getActiveVehicle();
+  if (!vehicle) return;
+
+  try {
+    let code = vehicle.invite_code;
+    if (!code) {
+      code = await generateInviteCode(vehicle.id);
+      vehicle.invite_code = code;
+    }
+
+    const inviteText = `Unite a mi vehiculo "${vehicle.name}" en Naftometro! Codigo: ${code}`;
+
+    if (navigator.share) {
+      try {
+        await navigator.share({ text: inviteText });
+        haptic();
+      } catch (err) {
+        if (err.name !== 'AbortError') {
+          await fallbackCopy(inviteText);
+        }
+      }
+    } else {
+      await fallbackCopy(inviteText);
+    }
+  } catch (err) {
+    console.error('Error generating invite code:', err);
+    showToast('Error al generar codigo de invitacion', 'error');
+  }
+}
+
+// v16.2: Handle joining a vehicle by invite code
+async function handleJoinByCode() {
+  const code = prompt('Ingresa el codigo de invitacion:');
+  if (!code || !code.trim()) return;
+
+  try {
+    const result = await joinVehicleByCode(code.trim().toUpperCase());
+
+    if (result && result.success) {
+      showToast('Te uniste al vehiculo exitosamente!');
+      haptic();
+      state.vehicles = await fetchVehicles();
+      await renderVehicleCards();
+      renderVehicleDetail();
+    } else {
+      showToast(result?.error || 'Codigo invalido', 'error');
+    }
+  } catch (err) {
+    console.error('Error joining vehicle:', err);
+    showToast('Error al unirse al vehiculo', 'error');
+  }
+}
+
 async function handleShare() {
   const text = generateSummaryText();
   if (!text) return;
@@ -2829,6 +2905,10 @@ function bindEvents() {
   // Share buttons
   $('#btn-share').addEventListener('click', handleShare);
   $('#btn-share-balances').addEventListener('click', handleShare);
+
+  // v16.2: Invite code
+  $('#btn-invite').addEventListener('click', handleInvite);
+  $('#btn-join-by-code').addEventListener('click', handleJoinByCode);
 
   // v14.8: Action Center buttons
   dom.btnQuickTrip.addEventListener('click', () => openTripModal());
@@ -3093,9 +3173,20 @@ async function init() {
     db.auth.signInWithOAuth({ provider: 'google' });
   });
 
-  // v16.1: Logout
+  // v16.2: Logout — clear all cached state to prevent ghost data
   document.getElementById('btn-logout').addEventListener('click', async () => {
     await db.auth.signOut();
+    localStorage.clear();
+    state.vehicles = [];
+    state.activeVehicleId = null;
+    state.trips = [];
+    state.payments = [];
+    state.dashboardLoaded = false;
+    state.allTrips = [];
+    state.allPayments = [];
+    dom.vehiclesGrid.innerHTML = '';
+    dom.tripsTbody.innerHTML = '';
+    dom.paymentsList.innerHTML = '';
     showLogin();
   });
 
@@ -3116,6 +3207,8 @@ async function init() {
         await loadAppData();
       }
     } else if (event === 'SIGNED_OUT') {
+      state.vehicles = [];
+      state.activeVehicleId = null;
       showLogin();
     }
   });
