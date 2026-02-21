@@ -1036,22 +1036,22 @@ select option {
   transition: opacity 300ms ease;
 }
 
-/* --- Login View (v16.1) --- */
-.login-view {
+/* --- v18: Landing Page --- */
+.landing-page {
   height: 100vh;
   height: 100dvh;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 1rem;
-}
-.login-card {
-  max-width: 380px;
-  width: 100%;
   text-align: center;
 }
-.login-title {
-  font-size: 2rem;
+.landing-content {
+  max-width: 380px;
+  width: 100%;
+}
+.landing-title {
+  font-size: 2.8rem;
   font-weight: 800;
   background: linear-gradient(135deg, var(--color-primary), #a78bfa);
   -webkit-background-clip: text;
@@ -1059,10 +1059,130 @@ select option {
   background-clip: text;
   margin-bottom: 0.5rem;
 }
-.login-subtitle {
+.landing-tagline {
   color: var(--text-muted);
-  font-size: 0.85rem;
-  margin-bottom: 1.5rem;
+  font-size: 1rem;
+  margin-bottom: 2rem;
+}
+.landing-features {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-bottom: 2rem;
+  text-align: left;
+}
+.landing-feature {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+}
+.landing-feature-icon {
+  font-size: 1.3rem;
+  width: 2rem;
+  text-align: center;
+  flex-shrink: 0;
+}
+.btn-lg {
+  padding: 1rem 1.5rem;
+  font-size: 1.1rem;
+}
+.landing-note {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  margin-top: 0.75rem;
+}
+
+/* --- v18: Auth Modal --- */
+.btn-google {
+  background: #fff;
+  color: #333;
+  font-weight: 600;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
+.btn-google:active {
+  background: #e8e8e8;
+}
+.auth-separator {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 1rem 0;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+.auth-separator::before,
+.auth-separator::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--glass-border);
+}
+.auth-toggle {
+  text-align: center;
+  margin-top: 1rem;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+.btn-link {
+  background: none;
+  border: none;
+  color: var(--color-primary);
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.82rem;
+  font-family: var(--font-family);
+  text-decoration: underline;
+}
+input[type="email"],
+input[type="password"] {
+  width: 100%;
+  padding: 0.85rem 0.95rem;
+  min-height: 48px;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-sm);
+  background: rgba(0, 0, 0, 0.3);
+  color: var(--text-primary);
+  font-size: 16px;
+  font-family: var(--font-family);
+  transition: border-color var(--transition);
+  outline: none;
+}
+input[type="email"]:focus,
+input[type="password"]:focus {
+  border-color: var(--color-primary);
+}
+
+/* --- v18: Avatar Claim --- */
+.avatar-claim-subtitle {
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  margin-bottom: 1rem;
+}
+.avatar-claim-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+.avatar-claim-btn {
+  width: 100%;
+  padding: 0.85rem 1rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--glass-border);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-primary);
+  font-size: 0.95rem;
+  cursor: pointer;
+  font-family: var(--font-family);
+  text-align: left;
+  min-height: 48px;
+  transition: all 0.2s;
+}
+.avatar-claim-btn:active {
+  background: var(--color-primary-light);
+  border-color: var(--color-primary);
 }
 
 #confirm-message {

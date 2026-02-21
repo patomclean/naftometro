@@ -1,4 +1,4 @@
-console.log("🚀 Naftómetro v17.1 cargado correctamente");
+console.log("🚀 Naftómetro v18.0 cargado correctamente");
 
 // ============================================================
 // 1. CONSTANTS & CONFIGURATION
@@ -104,6 +104,8 @@ const state = {
   pendingPhotoFile: null,
   photoRemoved: false,
   ledger: [],  // v17: Ledger entries for active vehicle
+  profile: null,           // v18: user profile
+  driverMappings: [],      // v18: driver mappings for active vehicle
 };
 
 // ============================================================
@@ -228,6 +230,10 @@ const dom = {
   // v15.2: Vehicle selector
   vehicleSelectorModal: $('#vehicle-selector-modal'),
   vehicleSelectorList: $('#vehicle-selector-list'),
+  // v18: Auth, Onboarding, Avatar Claim
+  authModal: $('#auth-modal'),
+  onboardingModal: $('#onboarding-modal'),
+  avatarClaimModal: $('#avatar-claim-modal'),
 };
 
 // ============================================================
@@ -670,6 +676,59 @@ async function insertLedgerEntry(entry) {
   const { data, error } = await db
     .from('ledger')
     .insert(entry)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+// v18: Profile CRUD
+async function fetchProfile() {
+  const { data: { user } } = await db.auth.getUser();
+  if (!user) return null;
+  const { data, error } = await db
+    .from('profiles')
+    .select('*')
+    .eq('id', user.id)
+    .single();
+  if (error && error.code === 'PGRST116') {
+    const { data: created } = await db
+      .from('profiles')
+      .insert({ id: user.id })
+      .select()
+      .single();
+    return created;
+  }
+  if (error) throw error;
+  return data;
+}
+
+async function updateProfile(updates) {
+  const { data: { user } } = await db.auth.getUser();
+  const { data, error } = await db
+    .from('profiles')
+    .update(updates)
+    .eq('id', user.id)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+// v18: Driver Mapping CRUD
+async function fetchDriverMappings(vehicleId) {
+  const { data, error } = await db
+    .from('vehicle_driver_mappings')
+    .select('*')
+    .eq('vehicle_id', vehicleId);
+  if (error) throw error;
+  return data || [];
+}
+
+async function insertDriverMapping(mapping) {
+  const { data, error } = await db
+    .from('vehicle_driver_mappings')
+    .insert(mapping)
     .select()
     .single();
   if (error) throw error;
@@ -1912,14 +1971,16 @@ async function selectVehicle(vehicleId) {
 
   try {
     const vehicle = getActiveVehicle();
-    const [trips, payments, ledger] = await Promise.all([
+    const [trips, payments, ledger, driverMappings] = await Promise.all([
       fetchTrips(vehicleId),
       fetchPayments(vehicleId),
       fetchLedger(vehicleId),
+      fetchDriverMappings(vehicleId),
     ]);
     state.trips = trips;
     state.payments = payments;
     state.ledger = ledger;
+    state.driverMappings = driverMappings;
 
     // v17: Auto-migrate legacy balances to ledger on first load
     if (state.ledger.length === 0 && (trips.length > 0 || payments.length > 0) && vehicle) {
@@ -2277,6 +2338,9 @@ function openPaymentModal(editId) {
     $('#payment-modal-title').textContent = 'Cargar combustible';
     // v14.6: Default occurred_at to now
     dom.paymentOccurredAt.value = toLocalDatetimeValue();
+    // v18: Auto-select logged-in user's driver
+    const myDriver = getMyDriverName(vehicle.id);
+    if (myDriver) dom.paymentDriver.value = myDriver;
   }
 
   toggleHidden(dom.paymentModal, false);
@@ -2325,6 +2389,9 @@ function openTripModal(editTrip) {
     dom.costPreviewValue.textContent = '$0,00';
     dom.tripModalTitle.textContent = 'Registrar viaje';
     dom.btnSubmitTrip.querySelector('.btn-text').textContent = 'Registrar viaje';
+    // v18: Auto-select logged-in user's driver
+    const myDriver = getMyDriverName(vehicle.id);
+    if (myDriver) dom.tripDriver.value = myDriver;
   }
   toggleHidden(dom.tripModal, false);
 }
@@ -3315,6 +3382,148 @@ function bindEvents() {
   });
 }
 
+// ============================================================
+// v18: AUTH, ONBOARDING, AVATAR CLAIM
+// ============================================================
+
+// v18: Get the driver name linked to the logged-in user for a vehicle
+function getMyDriverName(vehicleId) {
+  const { profile, driverMappings } = state;
+  const mapping = driverMappings.find(m =>
+    m.vehicle_id === vehicleId && m.user_id === profile?.id
+  );
+  return mapping?.driver_name || null;
+}
+
+// v18: Auth mode (login vs signup)
+let authMode = 'login';
+
+function openAuthModal() {
+  authMode = 'login';
+  updateAuthModalUI();
+  toggleHidden(dom.authModal, false);
+}
+
+function closeAuthModal() {
+  toggleHidden(dom.authModal, true);
+  document.getElementById('auth-email-form').reset();
+}
+
+function updateAuthModalUI() {
+  const isLogin = authMode === 'login';
+  document.getElementById('btn-auth-submit').querySelector('.btn-text').textContent =
+    isLogin ? 'Iniciar sesion' : 'Crear cuenta';
+  document.getElementById('auth-toggle-text').textContent =
+    isLogin ? 'No tenes cuenta?' : 'Ya tenes cuenta?';
+  document.getElementById('btn-auth-toggle').textContent =
+    isLogin ? 'Registrate' : 'Inicia sesion';
+}
+
+async function handleEmailAuth(e) {
+  e.preventDefault();
+  const email = document.getElementById('auth-email').value.trim();
+  const password = document.getElementById('auth-password').value;
+  const btn = document.getElementById('btn-auth-submit');
+  const btnText = btn.querySelector('.btn-text');
+  const btnLoader = btn.querySelector('.btn-loader');
+
+  btnText.classList.add('hidden');
+  btnLoader.classList.remove('hidden');
+  btn.disabled = true;
+
+  try {
+    let result;
+    if (authMode === 'login') {
+      result = await db.auth.signInWithPassword({ email, password });
+    } else {
+      result = await db.auth.signUp({ email, password });
+    }
+    if (result.error) throw result.error;
+
+    if (authMode === 'signup' && result.data?.user && !result.data.session) {
+      showToast('Revisa tu email para confirmar tu cuenta');
+    }
+    closeAuthModal();
+  } catch (err) {
+    const msg = err.message || 'Error de autenticacion';
+    showToast(msg, 'error');
+  } finally {
+    btnText.classList.remove('hidden');
+    btnLoader.classList.add('hidden');
+    btn.disabled = false;
+  }
+}
+
+// v18: Onboarding
+async function showOnboardingModal() {
+  const { data: { user } } = await db.auth.getUser();
+  const nameInput = document.getElementById('onboarding-name');
+  if (user?.user_metadata?.full_name && !nameInput.value) {
+    nameInput.value = user.user_metadata.full_name;
+  }
+  toggleHidden(dom.onboardingModal, false);
+}
+
+async function handleOnboardingSubmit(e) {
+  e.preventDefault();
+  const name = document.getElementById('onboarding-name').value.trim();
+  const currency = document.getElementById('onboarding-currency').value;
+  if (!name) return;
+
+  try {
+    state.profile = await updateProfile({
+      display_name: name,
+      currency: currency,
+      onboarding_completed: true
+    });
+    toggleHidden(dom.onboardingModal, true);
+    showToast('Perfil guardado!');
+  } catch (err) {
+    showToast('Error al guardar perfil', 'error');
+  }
+}
+
+// v18: Avatar Claim (Tricount-style)
+async function showAvatarClaimModal(vehicleId, drivers) {
+  const mappings = await fetchDriverMappings(vehicleId);
+  const claimedNames = mappings.map(m => m.driver_name);
+  const unclaimedDrivers = drivers.filter(d => !claimedNames.includes(d));
+
+  const list = document.getElementById('avatar-claim-list');
+  list.innerHTML = '';
+
+  unclaimedDrivers.forEach(name => {
+    const btn = document.createElement('button');
+    btn.className = 'avatar-claim-btn';
+    btn.textContent = name;
+    btn.addEventListener('click', () => handleAvatarClaim(vehicleId, name));
+    list.appendChild(btn);
+  });
+
+  document.getElementById('btn-avatar-new').onclick = () => {
+    toggleHidden(dom.avatarClaimModal, true);
+    showToast('Pedi al dueno del vehiculo que te agregue como piloto');
+  };
+
+  toggleHidden(dom.avatarClaimModal, false);
+}
+
+async function handleAvatarClaim(vehicleId, driverName) {
+  try {
+    const { data: { user } } = await db.auth.getUser();
+    await insertDriverMapping({
+      vehicle_id: vehicleId,
+      user_id: user.id,
+      driver_name: driverName
+    });
+    toggleHidden(dom.avatarClaimModal, true);
+    showToast(`Vinculado como "${driverName}"`);
+    state.driverMappings = await fetchDriverMappings(vehicleId);
+  } catch (err) {
+    showToast('Error al vincular piloto', 'error');
+  }
+}
+
 // v15.9: Welcome modal
 function closeWelcomeModal() {
   const overlay = document.getElementById('welcome-overlay');
@@ -3338,16 +3547,17 @@ function showWelcomeModal() {
   });
 }
 
-// v16.1: Auth UI helpers
+// v18: Auth UI helpers
 function showApp() {
-  document.getElementById('login-view').style.display = 'none';
+  document.getElementById('landing-page').style.display = 'none';
+  toggleHidden(dom.authModal, true);
   document.getElementById('views-container').style.display = '';
   document.getElementById('bottom-nav').style.display = '';
   document.getElementById('btn-logout').style.display = '';
 }
 
 function showLogin() {
-  document.getElementById('login-view').style.display = '';
+  document.getElementById('landing-page').style.display = '';
   document.getElementById('views-container').style.display = 'none';
   document.getElementById('bottom-nav').style.display = 'none';
   document.getElementById('btn-logout').style.display = 'none';
@@ -3370,22 +3580,21 @@ async function loadAppData() {
   }
 }
 
-// v16.3: Check URL for invite parameter and save for auto-join
+// v18: Check URL for invite parameter and save for auto-join (localStorage for persistence)
 function checkUrlParameters() {
   const params = new URLSearchParams(window.location.search);
   const inviteCode = params.get('invite');
   if (inviteCode) {
-    sessionStorage.setItem('naftometro_pending_invite', inviteCode.trim().toUpperCase());
-    // Clean URL without reload
+    localStorage.setItem('naftometro_pending_invite', inviteCode.trim().toUpperCase());
     window.history.replaceState({}, '', window.location.pathname);
   }
 }
 
-// v16.3: Process pending invite after session is active
+// v18: Process pending invite after session is active (localStorage for persistence)
 async function processPendingInvite() {
-  const code = sessionStorage.getItem('naftometro_pending_invite');
+  const code = localStorage.getItem('naftometro_pending_invite');
   if (!code) return;
-  sessionStorage.removeItem('naftometro_pending_invite');
+  localStorage.removeItem('naftometro_pending_invite');
 
   try {
     const result = await joinVehicleByCode(code);
@@ -3395,6 +3604,13 @@ async function processPendingInvite() {
       state.vehicles = await fetchVehicles();
       await renderVehicleCards();
       renderVehicleDetail();
+
+      // v18: Show avatar claim for the joined vehicle
+      const vehicleId = result.vehicle_id;
+      const vehicle = state.vehicles.find(v => v.id === vehicleId);
+      if (vehicle) {
+        await showAvatarClaimModal(vehicleId, vehicle.drivers || []);
+      }
     } else {
       showToast(result?.error || 'Codigo de invitacion invalido', 'error');
     }
@@ -3405,7 +3621,7 @@ async function processPendingInvite() {
 }
 
 async function init() {
-  // v16.3: Capture invite code from URL before anything else
+  // v18: Capture invite code from URL before anything else (localStorage)
   checkUrlParameters();
 
   // Register service worker
@@ -3413,15 +3629,24 @@ async function init() {
     navigator.serviceWorker.register('/sw.js').catch(() => {});
   }
 
-  // v16.1: Google OAuth login
-  document.getElementById('btn-login-google').addEventListener('click', () => {
+  // v18: Auth bindings (landing page + auth modal)
+  document.getElementById('btn-open-auth').addEventListener('click', openAuthModal);
+  document.getElementById('btn-close-auth-modal').addEventListener('click', closeAuthModal);
+  dom.authModal.addEventListener('click', (e) => { if (e.target === dom.authModal) closeAuthModal(); });
+  document.getElementById('btn-auth-google').addEventListener('click', () => {
     db.auth.signInWithOAuth({ provider: 'google' });
   });
+  document.getElementById('btn-auth-toggle').addEventListener('click', () => {
+    authMode = authMode === 'login' ? 'signup' : 'login';
+    updateAuthModalUI();
+  });
+  document.getElementById('auth-email-form').addEventListener('submit', handleEmailAuth);
+  document.getElementById('onboarding-form').addEventListener('submit', handleOnboardingSubmit);
 
-  // v16.2: Logout — clear all cached state to prevent ghost data
+  // v18: Logout — clear cached state (preserve pending invite in localStorage)
   document.getElementById('btn-logout').addEventListener('click', async () => {
     await db.auth.signOut();
-    localStorage.clear();
+    localStorage.removeItem('naftometro_welcome_seen');
     state.vehicles = [];
     state.activeVehicleId = null;
     state.trips = [];
@@ -3429,33 +3654,49 @@ async function init() {
     state.dashboardLoaded = false;
     state.allTrips = [];
     state.allPayments = [];
+    state.profile = null;
+    state.driverMappings = [];
     dom.vehiclesGrid.innerHTML = '';
     dom.tripsTbody.innerHTML = '';
     dom.paymentsList.innerHTML = '';
     showLogin();
   });
 
-  // v16.1: Check initial session
+  // v18: Check initial session
   const { data: { session } } = await db.auth.getSession();
   if (session) {
     showApp();
     await loadAppData();
-    await processPendingInvite(); // v16.3
+    // v18: Onboarding check
+    const profile = await fetchProfile();
+    state.profile = profile;
+    if (profile && !profile.onboarding_completed) {
+      await showOnboardingModal();
+    }
+    await processPendingInvite();
   } else {
     showLogin();
   }
 
-  // v16.1: Listen for auth state changes (OAuth redirect, token refresh)
+  // v18: Listen for auth state changes (OAuth redirect, email login, token refresh)
   db.auth.onAuthStateChange(async (event, session) => {
     if (event === 'SIGNED_IN' && session) {
       showApp();
       if (state.vehicles.length === 0) {
         await loadAppData();
       }
-      await processPendingInvite(); // v16.3
+      // v18: Onboarding check
+      const profile = await fetchProfile();
+      state.profile = profile;
+      if (profile && !profile.onboarding_completed) {
+        await showOnboardingModal();
+      }
+      await processPendingInvite();
     } else if (event === 'SIGNED_OUT') {
       state.vehicles = [];
       state.activeVehicleId = null;
+      state.profile = null;
+      state.driverMappings = [];
       showLogin();
     }
   });

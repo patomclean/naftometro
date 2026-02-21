@@ -10,16 +10,31 @@
   <link rel="manifest" href="manifest.json">
   <link rel="apple-touch-icon" href="icons/icon-192.svg">
   <link rel="icon" type="image/svg+xml" href="icons/icon-192.svg">
-  <link rel="stylesheet" href="style.css?v=17.1">
+  <link rel="stylesheet" href="style.css?v=18.0">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
-  <!-- v16.1: Login View -->
-  <div id="login-view" class="login-view">
-    <div class="glass-card login-card">
-      <h1 class="login-title">Naftometro</h1>
-      <p class="login-subtitle">Gestion de nafta compartida entre pilotos</p>
-      <button id="btn-login-google" class="btn btn-primary btn-block">Continuar con Google</button>
+  <!-- v18: Landing Page -->
+  <div id="landing-page" class="landing-page">
+    <div class="landing-content">
+      <h1 class="landing-title">Naftometro</h1>
+      <p class="landing-tagline">Costos justos, cuentas claras</p>
+      <div class="landing-features">
+        <div class="landing-feature">
+          <span class="landing-feature-icon">&#9981;</span>
+          <span>Registra cargas y viajes</span>
+        </div>
+        <div class="landing-feature">
+          <span class="landing-feature-icon">&#128101;</span>
+          <span>Divide costos entre pilotos</span>
+        </div>
+        <div class="landing-feature">
+          <span class="landing-feature-icon">&#128200;</span>
+          <span>Audita consumo real vs teorico</span>
+        </div>
+      </div>
+      <button id="btn-open-auth" class="btn btn-primary btn-block btn-lg">Comenzar</button>
+      <p class="landing-note">Gratis. Sin tarjeta de credito.</p>
     </div>
   </div>
 
@@ -552,9 +567,85 @@
     </div>
   </div>
 
+  <!-- v18: Auth Modal -->
+  <div id="auth-modal" class="modal-overlay hidden">
+    <div class="modal glass-card modal-sm">
+      <div class="modal-header">
+        <h3>Ingresar</h3>
+        <button id="btn-close-auth-modal" class="btn-icon">&times;</button>
+      </div>
+      <button id="btn-auth-google" class="btn btn-google btn-block">
+        <span>Continuar con Google</span>
+      </button>
+      <div class="auth-separator">
+        <span>o con email</span>
+      </div>
+      <form id="auth-email-form">
+        <div class="form-group">
+          <label for="auth-email">Email</label>
+          <input type="email" id="auth-email" required placeholder="tu@email.com">
+        </div>
+        <div class="form-group">
+          <label for="auth-password">Contrasena</label>
+          <input type="password" id="auth-password" required minlength="6" placeholder="Minimo 6 caracteres">
+        </div>
+        <button type="submit" id="btn-auth-submit" class="btn btn-primary btn-block">
+          <span class="btn-text">Iniciar sesion</span>
+          <span class="btn-loader hidden"></span>
+        </button>
+      </form>
+      <div class="auth-toggle">
+        <span id="auth-toggle-text">No tenes cuenta?</span>
+        <button type="button" id="btn-auth-toggle" class="btn-link">Registrate</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- v18: Onboarding Modal -->
+  <div id="onboarding-modal" class="modal-overlay hidden">
+    <div class="modal glass-card modal-sm">
+      <div class="modal-header">
+        <h3>Bienvenido a Naftometro</h3>
+      </div>
+      <form id="onboarding-form">
+        <div class="form-group">
+          <label for="onboarding-name">Como te llaman?</label>
+          <input type="text" id="onboarding-name" required placeholder="Tu nombre o apodo" maxlength="30">
+        </div>
+        <div class="form-group">
+          <label for="onboarding-currency">Moneda base</label>
+          <select id="onboarding-currency">
+            <option value="ARS" selected>ARS - Peso Argentino</option>
+            <option value="USD">USD - Dolar</option>
+            <option value="EUR">EUR - Euro</option>
+            <option value="BRL">BRL - Real</option>
+            <option value="CLP">CLP - Peso Chileno</option>
+            <option value="UYU">UYU - Peso Uruguayo</option>
+          </select>
+        </div>
+        <button type="submit" class="btn btn-primary btn-block">
+          <span class="btn-text">Continuar</span>
+          <span class="btn-loader hidden"></span>
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- v18: Avatar Claim Modal -->
+  <div id="avatar-claim-modal" class="modal-overlay hidden">
+    <div class="modal glass-card modal-sm">
+      <div class="modal-header">
+        <h3>Cual de estos pilotos sos vos?</h3>
+      </div>
+      <p class="avatar-claim-subtitle">Selecciona tu nombre para vincular tu cuenta</p>
+      <div id="avatar-claim-list" class="avatar-claim-list"></div>
+      <button id="btn-avatar-new" class="btn btn-secondary btn-block">Soy alguien nuevo</button>
+    </div>
+  </div>
+
   <!-- Toast Container -->
   <div id="toast-container" class="toast-container"></div>
 
-  <script src="app.js?v=17.1"></script>
+  <script src="app.js?v=18.0"></script>
 </body>
 </html>
