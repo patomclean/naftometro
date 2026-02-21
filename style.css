@@ -927,28 +927,35 @@ select option {
 /* --- Modals --- */
 .modal-overlay {
   position: fixed;
-  inset: 0;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100vw;
+  height: 100vh;
   background: rgba(0, 0, 0, 0.6);
   backdrop-filter: blur(4px);
   -webkit-backdrop-filter: blur(4px);
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   justify-content: center;
-  z-index: 1000;
-  padding: 0;
+  z-index: 9999;
+  padding: 1rem;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
 }
 
 .modal {
+  position: relative;
   width: 100%;
   max-width: 480px;
-  max-height: 95vh;
-  max-height: 95dvh;
+  max-height: 90vh;
+  max-height: 90dvh;
   overflow-y: auto;
-  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  border-radius: var(--radius-lg);
   padding-bottom: calc(1.5rem + var(--safe-bottom));
-  animation: slideUpModal 300ms ease;
+  z-index: 10000;
+  animation: slideUp 300ms ease;
 }
 
 .modal-sm {
@@ -1719,16 +1726,9 @@ h3 {
     grid-template-columns: 1fr 1fr;
   }
 
-  /* Center modal on larger screens */
-  .modal-overlay {
-    align-items: center;
-    padding: 1rem;
-  }
-
+  /* Desktop modal adjustments */
   .modal {
-    border-radius: var(--radius-lg);
     padding-bottom: 1.5rem;
-    animation: slideUp 300ms ease;
   }
 
   /* v15.10: Welcome modal desktop zoom */
