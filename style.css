@@ -977,6 +977,7 @@ select option {
 .welcome-modal {
   max-width: 420px;
   text-align: center;
+  margin: auto;
 }
 .welcome-header {
   margin-bottom: 1.25rem;
@@ -1699,6 +1700,11 @@ h3 {
     border-radius: var(--radius-lg);
     padding-bottom: 1.5rem;
     animation: slideUp 300ms ease;
+  }
+
+  /* v15.10: Welcome modal desktop zoom */
+  .welcome-modal {
+    transform: scale(1.25);
   }
 }
 

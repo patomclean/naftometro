@@ -1,4 +1,4 @@
-console.log("🚀 Naftómetro v15.9 cargado correctamente");
+console.log("🚀 Naftómetro v15.10 cargado correctamente");
 
 // ============================================================
 // 1. CONSTANTS & CONFIGURATION
@@ -3028,17 +3028,25 @@ function bindEvents() {
 }
 
 // v15.9: Welcome modal
+function closeWelcomeModal() {
+  const overlay = document.getElementById('welcome-overlay');
+  if (overlay.classList.contains('hidden')) return;
+  overlay.classList.add('welcome-overlay-fade');
+  setTimeout(() => {
+    toggleHidden(overlay, true);
+    overlay.classList.remove('welcome-overlay-fade');
+  }, 300);
+  localStorage.setItem('naftometro_welcome_seen', '1');
+}
+
 function showWelcomeModal() {
   if (localStorage.getItem('naftometro_welcome_seen')) return;
   const overlay = document.getElementById('welcome-overlay');
   toggleHidden(overlay, false);
-  document.getElementById('btn-welcome-start').addEventListener('click', () => {
-    overlay.classList.add('welcome-overlay-fade');
-    setTimeout(() => {
-      toggleHidden(overlay, true);
-      overlay.classList.remove('welcome-overlay-fade');
-    }, 300);
-    localStorage.setItem('naftometro_welcome_seen', '1');
+  document.getElementById('btn-welcome-start').addEventListener('click', closeWelcomeModal);
+  // v15.10: Click outside to close
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) closeWelcomeModal();
   });
 }
 
