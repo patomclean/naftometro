@@ -1,4 +1,4 @@
-console.log("🚀 Naftómetro v15.8 cargado correctamente");
+console.log("🚀 Naftómetro v15.9 cargado correctamente");
 
 // ============================================================
 // 1. CONSTANTS & CONFIGURATION
@@ -3027,6 +3027,21 @@ function bindEvents() {
   });
 }
 
+// v15.9: Welcome modal
+function showWelcomeModal() {
+  if (localStorage.getItem('naftometro_welcome_seen')) return;
+  const overlay = document.getElementById('welcome-overlay');
+  toggleHidden(overlay, false);
+  document.getElementById('btn-welcome-start').addEventListener('click', () => {
+    overlay.classList.add('welcome-overlay-fade');
+    setTimeout(() => {
+      toggleHidden(overlay, true);
+      overlay.classList.remove('welcome-overlay-fade');
+    }, 300);
+    localStorage.setItem('naftometro_welcome_seen', '1');
+  });
+}
+
 async function init() {
   // Register service worker
   if ('serviceWorker' in navigator) {
@@ -3036,6 +3051,7 @@ async function init() {
   populateFormOptions();
   bindEvents();
   initSwipeGesture();
+  showWelcomeModal();
 
   // Show detail empty state by default
   renderVehicleDetail();

@@ -10,7 +10,7 @@
   <link rel="manifest" href="manifest.json">
   <link rel="apple-touch-icon" href="icons/icon-192.svg">
   <link rel="icon" type="image/svg+xml" href="icons/icon-192.svg">
-  <link rel="stylesheet" href="style.css?v=15.8">
+  <link rel="stylesheet" href="style.css?v=15.9">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
@@ -509,9 +509,40 @@
     </div>
   </div>
 
+  <!-- Welcome Modal (v15.9) -->
+  <div id="welcome-overlay" class="modal-overlay hidden">
+    <div class="modal glass-card welcome-modal">
+      <div class="welcome-header">
+        <h2>Tu Socio Naftometro</h2>
+        <p class="welcome-subtitle">Costos justos, cuentas claras</p>
+      </div>
+      <div class="welcome-body">
+        <div class="welcome-section">
+          <h4>Como funciona</h4>
+          <p>Registra los viajes y las cargas de combustible de cada piloto. Naftometro calcula automaticamente quien debe y quien tiene credito.</p>
+        </div>
+        <div class="welcome-section">
+          <div class="welcome-badge-row">
+            <span class="meta-pill pill-full">Auditado</span>
+            <span>Costo real, verificado con tanque lleno</span>
+          </div>
+          <div class="welcome-badge-row">
+            <span class="meta-pill">Estimado</span>
+            <span>Aproximacion basada en consumo teorico</span>
+          </div>
+        </div>
+        <div class="welcome-section">
+          <h4>Confia en los numeros</h4>
+          <p>Cada vez que llenas el tanque, Naftometro audita automaticamente todos los viajes del ciclo y ajusta los costos al consumo real. Cuanto mas uses la app, mas precisos seran los calculos.</p>
+        </div>
+      </div>
+      <button id="btn-welcome-start" class="btn btn-primary btn-block">Empezar el viaje</button>
+    </div>
+  </div>
+
   <!-- Toast Container -->
   <div id="toast-container" class="toast-container"></div>
 
-  <script src="app.js?v=15.8"></script>
+  <script src="app.js?v=15.9"></script>
 </body>
 </html>
