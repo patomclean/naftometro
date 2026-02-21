@@ -1,4 +1,4 @@
-console.log("🚀 Naftómetro v15.10 cargado correctamente");
+console.log("🚀 Naftómetro v16.1 cargado correctamente");
 
 // ============================================================
 // 1. CONSTANTS & CONFIGURATION
@@ -3050,18 +3050,26 @@ function showWelcomeModal() {
   });
 }
 
-async function init() {
-  // Register service worker
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('/sw.js').catch(() => {});
-  }
+// v16.1: Auth UI helpers
+function showApp() {
+  document.getElementById('login-view').style.display = 'none';
+  document.getElementById('views-container').style.display = '';
+  document.getElementById('bottom-nav').style.display = '';
+  document.getElementById('btn-logout').style.display = '';
+}
 
+function showLogin() {
+  document.getElementById('login-view').style.display = '';
+  document.getElementById('views-container').style.display = 'none';
+  document.getElementById('bottom-nav').style.display = 'none';
+  document.getElementById('btn-logout').style.display = 'none';
+}
+
+async function loadAppData() {
   populateFormOptions();
   bindEvents();
   initSwipeGesture();
   showWelcomeModal();
-
-  // Show detail empty state by default
   renderVehicleDetail();
 
   try {
@@ -3072,6 +3080,45 @@ async function init() {
     console.error('Init error:', err);
     toggleHidden(dom.homeLoading, true);
   }
+}
+
+async function init() {
+  // Register service worker
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/sw.js').catch(() => {});
+  }
+
+  // v16.1: Google OAuth login
+  document.getElementById('btn-login-google').addEventListener('click', () => {
+    db.auth.signInWithOAuth({ provider: 'google' });
+  });
+
+  // v16.1: Logout
+  document.getElementById('btn-logout').addEventListener('click', async () => {
+    await db.auth.signOut();
+    showLogin();
+  });
+
+  // v16.1: Check initial session
+  const { data: { session } } = await db.auth.getSession();
+  if (session) {
+    showApp();
+    await loadAppData();
+  } else {
+    showLogin();
+  }
+
+  // v16.1: Listen for auth state changes (OAuth redirect, token refresh)
+  db.auth.onAuthStateChange(async (event, session) => {
+    if (event === 'SIGNED_IN' && session) {
+      showApp();
+      if (state.vehicles.length === 0) {
+        await loadAppData();
+      }
+    } else if (event === 'SIGNED_OUT') {
+      showLogin();
+    }
+  });
 }
 
 document.addEventListener('DOMContentLoaded', init);

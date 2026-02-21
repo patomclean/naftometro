@@ -167,6 +167,19 @@ Esta fase se enfoco en resolver problemas reales detectados en QA con iPhone 15.
   - **Mobile (<=768px)**: `.view { height: 100dvh; overflow: hidden }` + `.view-content { overflow-y: auto }` — scroll independiente por pestaña
 - Dashboard y Vehiculos fluyen naturalmente en desktop sin contenido cortado
 
+### v15.9 — Welcome Experience
+- **Modal de bienvenida**: Glass-card con titulo gradiente "Tu Socio Naftometro", subtitulo "Costos justos, cuentas claras"
+- **Contenido educativo**: Explica como funciona la app, diferencia entre Auditado (pill verde) y Estimado (pill gris), y por que confiar en los numeros
+- **Persistencia via localStorage**: Clave `naftometro_welcome_seen` — el modal solo aparece una vez por dispositivo
+- **Boton "Empezar el viaje"**: Cierra el modal con fade-out de 300ms y guarda el estado
+- **Posicion**: Reutiliza `.modal-overlay` con centrado flex + clase `.welcome-modal` dentro de `.glass-card`
+
+### v15.10 — Welcome Modal Polish
+- **Desktop zoom**: En `@media (min-width: 768px)`, `.welcome-modal` con `transform: scale(1.25)` para que sea mas grande y legible en pantallas grandes
+- **Mobile centering**: `margin: auto` en `.welcome-modal` para centrado vertical y horizontal correcto en todos los dispositivos
+- **Click-outside-to-close**: Listener en el overlay que detecta clicks fuera del modal y llama a `closeWelcomeModal()` — misma transicion fade-out que el boton
+- **Refactor JS**: Logica de cierre extraida a `closeWelcomeModal()` reutilizable (boton y click-outside comparten la misma funcion)
+
 ---
 
 ## Problemas de iOS/Safari Resueltos

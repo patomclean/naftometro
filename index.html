@@ -10,11 +10,20 @@
   <link rel="manifest" href="manifest.json">
   <link rel="apple-touch-icon" href="icons/icon-192.svg">
   <link rel="icon" type="image/svg+xml" href="icons/icon-192.svg">
-  <link rel="stylesheet" href="style.css?v=15.10">
+  <link rel="stylesheet" href="style.css?v=16.1">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
-  <div class="views-container" id="views-container">
+  <!-- v16.1: Login View -->
+  <div id="login-view" class="login-view">
+    <div class="glass-card login-card">
+      <h1 class="login-title">Naftometro</h1>
+      <p class="login-subtitle">Gestion de nafta compartida entre pilotos</p>
+      <button id="btn-login-google" class="btn btn-primary btn-block">Continuar con Google</button>
+    </div>
+  </div>
+
+  <div class="views-container" id="views-container" style="display: none;">
 
     <!-- ========== VIEW 0: DETAIL (left) ========== -->
     <div class="view" id="view-detail">
@@ -161,6 +170,7 @@
             <button id="btn-add-trip-home" class="btn btn-secondary">+ Registrar viaje</button>
             <button id="btn-add-vehicle" class="btn btn-primary">+ Agregar vehiculo</button>
           </div>
+          <button id="btn-logout" class="btn btn-danger btn-sm" style="display: none; margin-top: 0.5rem;">Cerrar Sesion</button>
         </header>
 
         <div id="vehicles-grid" class="vehicles-grid"></div>
@@ -256,7 +266,7 @@
   </div>
 
   <!-- Bottom Navigation -->
-  <nav id="bottom-nav" class="bottom-nav">
+  <nav id="bottom-nav" class="bottom-nav" style="display: none;">
     <button class="nav-tab" data-tab="detail" id="nav-detail">
       <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M17.5 14v7M14 17.5h7"/></svg>
       <span class="nav-label">Vehiculos</span>
@@ -543,6 +553,6 @@
   <!-- Toast Container -->
   <div id="toast-container" class="toast-container"></div>
 
-  <script src="app.js?v=15.10"></script>
+  <script src="app.js?v=16.1"></script>
 </body>
 </html>
