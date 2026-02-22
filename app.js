@@ -1,4 +1,4 @@
-console.log("🚀 Naftómetro v18.3 cargado correctamente");
+console.log("🚀 Naftómetro v18.4 cargado correctamente");
 
 // ============================================================
 // 1. CONSTANTS & CONFIGURATION
@@ -2030,7 +2030,9 @@ function closeVehicleModal() {
 
 async function handleVehicleSubmit(e) {
   e.preventDefault();
+  // v18.4: Debounce — disable immediately to prevent double submit
   const btn = dom.btnSubmitVehicle;
+  if (btn.disabled) return;
   setButtonLoading(btn, true);
 
   const drivers = getDriverNames();
@@ -2420,7 +2422,9 @@ function openVehicleSelector(onSelect) {
 
 async function handlePaymentSubmit(e) {
   e.preventDefault();
+  // v18.4: Debounce — disable immediately to prevent double submit
   const btn = dom.btnSubmitPayment;
+  if (btn.disabled) return;
   setButtonLoading(btn, true);
 
   const driver = dom.paymentDriver.value;
@@ -2818,10 +2822,20 @@ function handleDeletePayment(payment) {
       }
       showToast('Carga eliminada');
       haptic();
-      state.payments = await fetchPayments(state.activeVehicleId);
+      // v18.4: Full state reload — cascade trigger deletes ledger rows,
+      // so we must re-fetch ledger + vehicles to reflect correct balances
+      const [payments, ledger, vehicles] = await Promise.all([
+        fetchPayments(state.activeVehicleId),
+        fetchLedger(state.activeVehicleId),
+        fetchVehicles(),
+      ]);
+      state.payments = payments;
+      state.ledger = ledger;
+      state.vehicles = vehicles;
       state.dashboardLoaded = false;
       renderBalances();
       renderPaymentHistory();
+      renderVehicleDetail();
       // v14.5: Recalculate global consumption after deleting a payment
       await recalculateGlobalConsumption();
       toggleHidden(dom.confirmModal, true);
@@ -2856,18 +2870,25 @@ function handleTripKmInput() {
 
 async function handleTripSubmit(e) {
   e.preventDefault();
+  // v18.4: Debounce — disable immediately to prevent double submit
+  const btn = dom.btnSubmitTrip;
+  if (btn.disabled) return;
+  setButtonLoading(btn, true);
+
   const vehicle = getActiveVehicle();
-  if (!vehicle) return;
+  if (!vehicle) { setButtonLoading(btn, false); return; }
 
   const km = parseFloat(dom.tripKm.value);
   if (!km || km <= 0) {
     showToast('Ingresa los kilometros recorridos', 'error');
+    setButtonLoading(btn, false);
     return;
   }
 
   const driver = dom.tripDriver.value;
   if (!driver) {
     showToast('Selecciona un piloto', 'error');
+    setButtonLoading(btn, false);
     return;
   }
 
@@ -2889,9 +2910,6 @@ async function handleTripSubmit(e) {
   if (tankLevel <= 0) {
     showToast('Tanque virtual vacio, usando precio de referencia', 'error');
   }
-
-  const btn = dom.btnSubmitTrip;
-  setButtonLoading(btn, true);
 
   try {
     // v12: Update existing or create new
@@ -2956,11 +2974,21 @@ async function handleDeleteTrip(tripId) {
     await deleteTrip(tripId);
     showToast('Viaje eliminado');
     haptic();
-    state.trips = await fetchTrips(state.activeVehicleId);
+    // v18.4: Full state reload — cascade trigger deletes ledger rows,
+    // so we must re-fetch ledger + vehicles to reflect correct balances
+    const [trips, ledger, vehicles] = await Promise.all([
+      fetchTrips(state.activeVehicleId),
+      fetchLedger(state.activeVehicleId),
+      fetchVehicles(),
+    ]);
+    state.trips = trips;
+    state.ledger = ledger;
+    state.vehicles = vehicles;
     state.dashboardLoaded = false;
     renderTrips();
     renderSummary();
     renderBalances();
+    renderVehicleDetail();
   } catch (err) {
     showToast('Error: ' + err.message, 'error');
   }
