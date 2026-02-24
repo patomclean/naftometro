@@ -1,4 +1,4 @@
-console.log("🚀 Naftómetro v18.9 cargado correctamente");
+console.log("🚀 Naftómetro v18.10 cargado correctamente");
 
 // ============================================================
 // 1. CONSTANTS & CONFIGURATION
@@ -1499,7 +1499,11 @@ function renderSummary() {
   dom.summaryGrid.innerHTML = '';
   dom.summaryGrid.className = 'actor-list';
 
-  drivers.forEach((driver, idx) => {
+  // v18.10: Sort actors by cost descending (highest spender first, zero-cost last)
+  const sortedActors = [...drivers].sort((a, b) => totals[b].cost - totals[a].cost);
+
+  sortedActors.forEach((driver) => {
+    const idx = drivers.indexOf(driver); // preserve original PILOT_COLORS assignment
     const data = totals[driver];
     const pct = grandTotal > 0 ? Math.round((data.cost / grandTotal) * 100) : 0;
     const color = PILOT_COLORS[idx % PILOT_COLORS.length];
@@ -1581,21 +1585,24 @@ function renderCharts() {
     });
   }
 
-  // v18.9: Dual-column — Litros cargados vs KM recorridos, last 4 months (efficiency view)
+  // v18.10: Mixed chart — Gasto Total ($) bars + Costo por KM ($/km) line, last 4 months
   const months = [];
   for (let i = 3; i >= 0; i--) {
     const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
     months.push({ year: d.getFullYear(), month: d.getMonth(), label: d.toLocaleDateString('es-AR', { month: 'short', year: '2-digit' }) });
   }
-  const monthLiters = months.map(m =>
+  const monthCosts = months.map(m =>
     state.payments
       .filter(p => { const d = new Date(p.occurred_at || p.created_at); return d.getMonth() === m.month && d.getFullYear() === m.year && Number(p.liters_loaded) > 0; })
-      .reduce((sum, p) => sum + Number(p.liters_loaded || 0), 0)
+      .reduce((sum, p) => sum + Number(p.amount || 0), 0)
   );
-  const monthKm = months.map(m =>
+  const monthKmAll = months.map(m =>
     state.trips
       .filter(t => { const d = new Date(t.occurred_at || t.created_at); return d.getMonth() === m.month && d.getFullYear() === m.year; })
       .reduce((sum, t) => sum + Number(t.km || 0), 0)
+  );
+  const monthCostPerKm = monthCosts.map((cost, i) =>
+    monthKmAll[i] > 0 ? +(cost / monthKmAll[i]).toFixed(2) : 0
   );
 
   const ctxCost = document.getElementById('chart-cost-bar');
@@ -1606,23 +1613,28 @@ function renderCharts() {
         labels: months.map(m => m.label),
         datasets: [
           {
-            label: 'Litros',
-            data: monthLiters,
-            backgroundColor: PILOT_COLORS[2] + 'bb',
-            borderColor: PILOT_COLORS[2],
+            type: 'bar',
+            label: 'Gasto Total',
+            data: monthCosts,
+            backgroundColor: PILOT_COLORS[0] + 'bb',
+            borderColor: PILOT_COLORS[0],
             borderWidth: 1,
             borderRadius: 5,
             borderSkipped: false,
             yAxisID: 'y',
           },
           {
-            label: 'KM',
-            data: monthKm,
-            backgroundColor: PILOT_COLORS[0] + 'bb',
-            borderColor: PILOT_COLORS[0],
-            borderWidth: 1,
-            borderRadius: 5,
-            borderSkipped: false,
+            type: 'line',
+            label: '$/km',
+            data: monthCostPerKm,
+            borderColor: PILOT_COLORS[2],
+            backgroundColor: PILOT_COLORS[2] + '33',
+            borderWidth: 2,
+            pointRadius: 4,
+            pointHoverRadius: 6,
+            pointBackgroundColor: PILOT_COLORS[2],
+            fill: false,
+            tension: 0.3,
             yAxisID: 'y1',
           },
         ],
@@ -1632,13 +1644,19 @@ function renderCharts() {
         maintainAspectRatio: false,
         plugins: {
           legend: { display: true, labels: { color: '#94a3b8', font: { size: 11 }, boxWidth: 12, padding: 10 } },
-          title: { display: true, text: 'Litros vs KM — ultimos 4 meses', color: '#e2e8f0', font: { size: 12, weight: '600' }, padding: { bottom: 8 } },
-          tooltip: { callbacks: { label: ctx => ctx.datasetIndex === 0 ? ` ${Number(ctx.raw).toFixed(1)} L` : ` ${Number(ctx.raw).toLocaleString('es-AR')} km` } },
+          title: { display: true, text: 'Gasto y Eficiencia — ultimos 4 meses', color: '#e2e8f0', font: { size: 12, weight: '600' }, padding: { bottom: 8 } },
+          tooltip: {
+            callbacks: {
+              label: ctx => ctx.datasetIndex === 0
+                ? ` $${formatCurrency(ctx.raw)}`
+                : ` $${Number(ctx.raw).toFixed(2)}/km`,
+            },
+          },
         },
         scales: {
           x: { ticks: { color: '#64748b' }, grid: { color: 'rgba(255,255,255,0.04)' } },
-          y:  { position: 'left',  ticks: { color: PILOT_COLORS[2], callback: v => v + ' L'  }, grid: { color: 'rgba(255,255,255,0.04)' } },
-          y1: { position: 'right', ticks: { color: PILOT_COLORS[0], callback: v => v + ' km' }, grid: { drawOnChartArea: false } },
+          y:  { position: 'left',  ticks: { color: PILOT_COLORS[0], callback: v => formatCurrency(v) }, grid: { color: 'rgba(255,255,255,0.04)' } },
+          y1: { position: 'right', ticks: { color: PILOT_COLORS[2], callback: v => '$' + v + '/km' }, grid: { drawOnChartArea: false } },
         },
       },
     });
@@ -4178,9 +4196,10 @@ async function init() {
   document.getElementById('btn-load-more-activity').addEventListener('click', loadMoreActivity);
   document.getElementById('btn-show-less-activity').addEventListener('click', showLessActivity);
 
-  // v18.6/v18.8: Settle Debt modal
-  dom.btnOpenSettleDebt.addEventListener('click', openSettleDebtModal);
-  dom.btnOpenSettleDebt2.addEventListener('click', openSettleDebtModal); // v18.8
+  // v18.10: Wire ALL settle-debt triggers safely — querySelectorAll never throws on missing elements
+  document.querySelectorAll('#btn-open-settle-debt, #btn-open-settle-debt-2').forEach(btn => {
+    btn.addEventListener('click', openSettleDebtModal);
+  });
   document.getElementById('btn-close-settle-debt').addEventListener('click', closeSettleDebtModal);
   dom.modalSettleDebt.addEventListener('click', (e) => { if (e.target === dom.modalSettleDebt) closeSettleDebtModal(); });
   document.getElementById('settle-debt-form').addEventListener('submit', handleSettleDebtSubmit);
