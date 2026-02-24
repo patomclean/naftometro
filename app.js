@@ -1,4 +1,4 @@
-console.log("🚀 Naftómetro v18.6 cargado correctamente");
+console.log("🚀 Naftómetro v18.7 cargado correctamente");
 
 // ============================================================
 // 1. CONSTANTS & CONFIGURATION
@@ -744,11 +744,31 @@ async function handleSettleDebtSubmit(e) {
 
   const vehicle = getActiveVehicle();
   const myDriverName = getMyDriverName(vehicle.id);
-  const creditor = dom.settleDebtCreditor.value;
+  const creditor = dom.settleDebtCreditor.value.trim();
   const amount = parseFloat(dom.settleDebtAmount.value);
 
-  if (!myDriverName || !creditor || !amount || amount <= 0) {
-    showToast('Completa todos los campos', 'error');
+  if (!myDriverName) {
+    showToast('No se pudo identificar tu piloto', 'error');
+    setButtonLoading(btn, false);
+    return;
+  }
+  if (!creditor) {
+    showToast('Selecciona a quien le pagas', 'error');
+    setButtonLoading(btn, false);
+    return;
+  }
+  if (creditor === myDriverName) {
+    showToast('No puedes pagarte a vos mismo', 'error');
+    setButtonLoading(btn, false);
+    return;
+  }
+  if (isNaN(amount) || amount <= 0) {
+    showToast('El monto debe ser mayor a cero', 'error');
+    setButtonLoading(btn, false);
+    return;
+  }
+  if (amount < 0.01) {
+    showToast('El monto minimo es $0.01', 'error');
     setButtonLoading(btn, false);
     return;
   }
@@ -1478,21 +1498,33 @@ function renderSummary() {
     }
   });
 
-  dom.summaryGrid.innerHTML = '';
   let grandTotal = 0;
+  drivers.forEach((driver) => { grandTotal += totals[driver].cost; });
 
-  drivers.forEach((driver) => {
+  // v18.7: Actor list — replace rigid card grid
+  dom.summaryGrid.innerHTML = '';
+  dom.summaryGrid.className = 'actor-list';
+
+  drivers.forEach((driver, idx) => {
     const data = totals[driver];
-    grandTotal += data.cost;
+    const pct = grandTotal > 0 ? Math.round((data.cost / grandTotal) * 100) : 0;
+    const color = PILOT_COLORS[idx % PILOT_COLORS.length];
+    const initial = driver.charAt(0).toUpperCase();
 
-    const card = document.createElement('div');
-    card.className = 'summary-card';
-    card.innerHTML = `
-      <div class="driver-name">${driver}</div>
-      <div class="driver-cost">${formatCurrency(data.cost)}</div>
-      <div class="driver-stats">${data.trips} viaje${data.trips !== 1 ? 's' : ''} · ${Number(data.km).toLocaleString('es-AR')} km</div>
+    const row = document.createElement('div');
+    row.className = 'actor-row';
+    row.innerHTML = `
+      <div class="actor-avatar" style="background:${color}">${initial}</div>
+      <div class="actor-info">
+        <div class="actor-name">${driver}</div>
+        <div class="actor-bar-track">
+          <div class="actor-bar-fill" style="width:${pct}%;background:${color}"></div>
+        </div>
+        <div class="actor-stats">${data.trips} viaje${data.trips !== 1 ? 's' : ''} · ${Number(data.km).toLocaleString('es-AR')} km · ${pct}%</div>
+      </div>
+      <div class="actor-cost">${formatCurrency(data.cost)}</div>
     `;
-    dom.summaryGrid.appendChild(card);
+    dom.summaryGrid.appendChild(row);
   });
 
   dom.summaryTotalValue.textContent = formatCurrency(grandTotal);
@@ -3548,15 +3580,25 @@ function bindEvents() {
     if (e.target === dom.tripModal) closeTripModal();
   });
 
-  // v14.8: Balance master toggle
+  // v14.8: Balance card detail toggle (expand all / collapse all)
   $('#btn-toggle-all-balances').addEventListener('click', () => {
     state.balancesExpanded = !state.balancesExpanded;
     document.querySelectorAll('.balance-expand').forEach(el => {
       el.classList.toggle('hidden', !state.balancesExpanded);
     });
     const btn = $('#btn-toggle-all-balances');
-    btn.innerHTML = state.balancesExpanded ? '&#9650;' : '&#9660;';
+    btn.innerHTML = state.balancesExpanded ? '&#9650;' : '&#8645;';
     btn.title = state.balancesExpanded ? 'Colapsar todos' : 'Expandir todos';
+  });
+
+  // v18.7: Collapse/expand the entire balances body section
+  $('#btn-toggle-balances-body').addEventListener('click', () => {
+    const body = document.getElementById('balances-body');
+    const btn = document.getElementById('btn-toggle-balances-body');
+    const isCollapsed = body.classList.toggle('collapsed');
+    btn.classList.toggle('collapsed', isCollapsed);
+    btn.setAttribute('aria-expanded', String(!isCollapsed));
+    btn.title = isCollapsed ? 'Expandir' : 'Colapsar';
   });
 
   // Toggle dashboard total spent (exact vs short)
