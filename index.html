@@ -10,7 +10,7 @@
   <link rel="manifest" href="manifest.json">
   <link rel="apple-touch-icon" href="icons/icon-192.svg">
   <link rel="icon" type="image/svg+xml" href="icons/icon-192.svg">
-  <link rel="stylesheet" href="style.css?v=18.5">
+  <link rel="stylesheet" href="style.css?v=18.6">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
@@ -100,58 +100,34 @@
             </button>
           </div>
 
-          <!-- v18.5: Detail Tabs Navigation -->
+          <!-- v18.6: Detail Tabs Navigation -->
           <div class="detail-tabs">
-            <button class="detail-tab active" data-detail-tab="summary">&#128202; Resumen</button>
-            <button class="detail-tab" data-detail-tab="activity">&#128203; Actividad</button>
-            <button class="detail-tab" data-detail-tab="settings">&#9881; Ajustes</button>
+            <button class="detail-tab active" data-detail-tab="summary">&#128202; Mi Resumen</button>
+            <button class="detail-tab" data-detail-tab="vehicle">&#128663; El Vehiculo</button>
+            <button class="detail-tab" data-detail-tab="history">&#128203; Historial</button>
           </div>
 
-          <!-- TAB: Resumen -->
+          <!-- TAB 1: Mi Resumen (default) -->
           <div id="tab-summary" class="detail-tab-panel">
-            <!-- Smart Card: balance personal del usuario -->
+            <!-- Smart Card: balance personal del usuario logueado -->
             <div id="smart-card" class="smart-card hidden">
               <div class="smart-card-label">Tu balance</div>
               <div id="smart-card-amount" class="smart-card-amount">$0,00</div>
               <div id="smart-card-status" class="smart-card-status"></div>
+              <button id="btn-open-settle-debt" class="btn btn-settle hidden">
+                Saldar Deuda
+              </button>
             </div>
-            <!-- Resumen de gastos -->
-            <div class="glass-card">
-              <div class="section-header">
-                <h3>Resumen de gastos</h3>
-              </div>
-              <div id="summary-grid" class="summary-grid"></div>
-              <div class="summary-total">
-                <span>Total:</span>
-                <strong id="summary-total-value">$0,00</strong>
-              </div>
-            </div>
-            <!-- Liquidacion sugerida (glass-card propio) -->
+            <!-- Liquidacion sugerida -->
             <div id="clearing-section" class="glass-card clearing-section hidden">
               <h4>Liquidacion sugerida</h4>
               <div id="clearing-list" class="clearing-list"></div>
             </div>
-            <!-- Estado del Capital -->
-            <div id="tank-capital-section" class="tank-capital-section hidden">
-              <h4>Estado del Capital</h4>
-              <p id="tank-capital-text" class="tank-capital-text"></p>
-            </div>
           </div>
 
-          <!-- TAB: Actividad -->
-          <div id="tab-activity" class="detail-tab-panel hidden">
-            <div id="activity-feed" class="activity-feed"></div>
-            <div id="activity-empty" class="empty-state-sm hidden">
-              <p>No hay actividad registrada.</p>
-            </div>
-            <button id="btn-load-more-activity" class="btn btn-secondary btn-block btn-sm hidden">
-              Cargar mas...
-            </button>
-          </div>
-
-          <!-- TAB: Ajustes -->
-          <div id="tab-settings" class="detail-tab-panel hidden">
-            <!-- Balances detallados -->
+          <!-- TAB 2: El Vehiculo -->
+          <div id="tab-vehicle" class="detail-tab-panel hidden">
+            <!-- Balances de todos los pilotos -->
             <div class="glass-card">
               <div class="section-header">
                 <h3>Balances</h3>
@@ -161,6 +137,17 @@
                 </div>
               </div>
               <div id="balances-grid" class="balances-grid"></div>
+              <!-- Resumen de km/gastos por piloto -->
+              <div id="summary-grid" class="summary-grid" style="margin-top:1rem"></div>
+              <div class="summary-total">
+                <span>Total gastado:</span>
+                <strong id="summary-total-value">$0,00</strong>
+              </div>
+            </div>
+            <!-- Estado del Capital -->
+            <div id="tank-capital-section" class="tank-capital-section hidden">
+              <h4>Estado del Capital</h4>
+              <p id="tank-capital-text" class="tank-capital-text"></p>
             </div>
             <!-- Cargas de combustible -->
             <div class="glass-card">
@@ -202,6 +189,22 @@
                   <tbody id="trips-tbody"></tbody>
                 </table>
               </div>
+            </div>
+          </div>
+
+          <!-- TAB 3: Historial (activity feed) -->
+          <div id="tab-history" class="detail-tab-panel hidden">
+            <div id="activity-feed" class="activity-feed"></div>
+            <div id="activity-empty" class="empty-state-sm hidden">
+              <p>No hay actividad registrada.</p>
+            </div>
+            <div class="activity-pagination">
+              <button id="btn-show-less-activity" class="btn btn-secondary btn-sm hidden">
+                Ver menos
+              </button>
+              <button id="btn-load-more-activity" class="btn btn-secondary btn-sm hidden">
+                Cargar mas...
+              </button>
             </div>
           </div>
         </div>
@@ -676,9 +679,33 @@
     </div>
   </div>
 
+  <!-- v18.6: Settle Debt Modal -->
+  <div id="modal-settle-debt" class="modal-overlay hidden">
+    <div class="modal glass-card modal-sm">
+      <div class="modal-header">
+        <h3>Saldar Deuda</h3>
+        <button id="btn-close-settle-debt" class="btn-icon">&times;</button>
+      </div>
+      <form id="settle-debt-form">
+        <div class="form-group">
+          <label for="settle-debt-creditor">A quien le pagas</label>
+          <select id="settle-debt-creditor" required></select>
+        </div>
+        <div class="form-group">
+          <label for="settle-debt-amount">Monto a pagar</label>
+          <input type="number" id="settle-debt-amount" min="1" step="1" required placeholder="0">
+        </div>
+        <button type="submit" id="btn-settle-debt-submit" class="btn btn-primary btn-block">
+          <span class="btn-text">Confirmar pago</span>
+          <span class="btn-loader hidden"></span>
+        </button>
+      </form>
+    </div>
+  </div>
+
   <!-- Toast Container -->
   <div id="toast-container" class="toast-container"></div>
 
-  <script src="app.js?v=18.5"></script>
+  <script src="app.js?v=18.6"></script>
 </body>
 </html>

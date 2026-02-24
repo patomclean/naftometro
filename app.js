@@ -1,4 +1,4 @@
-console.log("🚀 Naftómetro v18.5 cargado correctamente");
+console.log("🚀 Naftómetro v18.6 cargado correctamente");
 
 // ============================================================
 // 1. CONSTANTS & CONFIGURATION
@@ -238,16 +238,22 @@ const dom = {
   authModal: $('#auth-modal'),
   onboardingModal: $('#onboarding-modal'),
   avatarClaimModal: $('#avatar-claim-modal'),
-  // v18.5: Detail tabs & activity feed
+  // v18.5/v18.6: Detail tabs & activity feed
   tabSummary: $('#tab-summary'),
-  tabActivity: $('#tab-activity'),
-  tabSettings: $('#tab-settings'),
+  tabVehicle: $('#tab-vehicle'),
+  tabHistory: $('#tab-history'),
   smartCard: $('#smart-card'),
   smartCardAmount: $('#smart-card-amount'),
   smartCardStatus: $('#smart-card-status'),
+  btnOpenSettleDebt: $('#btn-open-settle-debt'),
   activityFeed: $('#activity-feed'),
   activityEmpty: $('#activity-empty'),
   btnLoadMoreActivity: $('#btn-load-more-activity'),
+  btnShowLessActivity: $('#btn-show-less-activity'),
+  // v18.6: Settle Debt Modal
+  modalSettleDebt: $('#modal-settle-debt'),
+  settleDebtCreditor: $('#settle-debt-creditor'),
+  settleDebtAmount: $('#settle-debt-amount'),
 };
 
 // ============================================================
@@ -523,11 +529,12 @@ function switchDetailTab(tab) {
   document.querySelectorAll('.detail-tab').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.detailTab === tab);
   });
+  // v18.6: tabs are summary / vehicle / history
   toggleHidden(dom.tabSummary, tab !== 'summary');
-  toggleHidden(dom.tabActivity, tab !== 'activity');
-  toggleHidden(dom.tabSettings, tab !== 'settings');
-  // Lazy-load activity feed on first visit to the tab
-  if (tab === 'activity' && state.activityItems.length === 0 && state.activeVehicleId) {
+  toggleHidden(dom.tabVehicle, tab !== 'vehicle');
+  toggleHidden(dom.tabHistory, tab !== 'history');
+  // Lazy-load activity feed on first visit to the history tab
+  if (tab === 'history' && state.activityItems.length === 0 && state.activeVehicleId) {
     buildAndRenderActivity();
   }
 }
@@ -549,17 +556,27 @@ function renderSmartCard() {
   }
   myBalance = +myBalance.toFixed(2);
 
-  dom.smartCardAmount.textContent = (myBalance > 0 ? '+' : '') + formatCurrency(myBalance);
+  // v18.6: Clear state classes
   dom.smartCard.classList.remove('debt', 'clear');
+  toggleHidden(dom.btnOpenSettleDebt, true);
+
   if (Math.abs(myBalance) < 0.01) {
-    dom.smartCardStatus.innerHTML = '&#10004; Estas al dia';
+    // Estás al día
+    dom.smartCardAmount.textContent = formatCurrency(0);
+    dom.smartCardStatus.innerHTML = '&#10003; Estas al dia';
   } else if (myBalance > 0) {
+    // Saldo positivo: te deben
     dom.smartCard.classList.add('clear');
+    dom.smartCardAmount.textContent = '+' + formatCurrency(myBalance);
     dom.smartCardStatus.textContent = 'Te deben plata';
   } else {
+    // Saldo negativo: debés — mostrar botón Saldar
     dom.smartCard.classList.add('debt');
+    dom.smartCardAmount.textContent = formatCurrency(myBalance);
     dom.smartCardStatus.textContent = 'Debes plata';
+    toggleHidden(dom.btnOpenSettleDebt, false);
   }
+
   toggleHidden(dom.smartCard, false);
 }
 
@@ -628,12 +645,15 @@ function renderActivityPage() {
   const end = (state.activityPage + 1) * ACTIVITY_PAGE_SIZE;
   const visible = state.activityItems.slice(0, end);
   const hasMore = end < state.activityItems.length;
+  // v18.6: show "Ver menos" only when more than the first page is visible
+  const canCollapse = state.activityPage > 0;
 
   dom.activityFeed.innerHTML = '';
 
   if (visible.length === 0) {
     toggleHidden(dom.activityEmpty, false);
     toggleHidden(dom.btnLoadMoreActivity, true);
+    toggleHidden(dom.btnShowLessActivity, true);
     return;
   }
 
@@ -654,11 +674,126 @@ function renderActivityPage() {
   });
 
   toggleHidden(dom.btnLoadMoreActivity, !hasMore);
+  toggleHidden(dom.btnShowLessActivity, !canCollapse); // v18.6
 }
 
 function loadMoreActivity() {
   state.activityPage++;
   renderActivityPage();
+}
+
+function showLessActivity() { // v18.6
+  state.activityPage = 0;
+  renderActivityPage();
+}
+
+// ============================================================
+// v18.6: SALDAR DEUDA (Settle Debt)
+// ============================================================
+
+function openSettleDebtModal() {
+  const vehicle = getActiveVehicle();
+  if (!vehicle) return;
+  const myDriverName = getMyDriverName(vehicle.id);
+  if (!myDriverName) return;
+
+  // Calculate my debt (negative balance)
+  let myBalance = 0;
+  if (state.ledger.length > 0) {
+    state.ledger.forEach(e => {
+      if (e.driver === myDriverName) myBalance += Number(e.amount);
+    });
+  }
+  const myDebt = Math.abs(+myBalance.toFixed(2));
+
+  // Build creditors list (drivers with positive balance)
+  const netByDriver = {};
+  state.ledger.forEach(e => {
+    netByDriver[e.driver] = (netByDriver[e.driver] || 0) + Number(e.amount);
+  });
+  const creditors = Object.entries(netByDriver)
+    .filter(([driver, net]) => driver !== myDriverName && net > 0.01)
+    .sort((a, b) => b[1] - a[1]);
+
+  if (creditors.length === 0) {
+    showToast('No hay acreedores en este vehiculo', 'error');
+    return;
+  }
+
+  // Populate select
+  dom.settleDebtCreditor.innerHTML = creditors
+    .map(([driver, net]) => `<option value="${driver}">${driver} (le deben ${formatCurrency(net)})</option>`)
+    .join('');
+
+  // Pre-fill amount with full debt
+  dom.settleDebtAmount.value = myDebt > 0 ? Math.round(myDebt) : '';
+
+  toggleHidden(dom.modalSettleDebt, false);
+}
+
+function closeSettleDebtModal() {
+  toggleHidden(dom.modalSettleDebt, true);
+  document.getElementById('settle-debt-form').reset();
+}
+
+async function handleSettleDebtSubmit(e) {
+  e.preventDefault();
+  const btn = document.getElementById('btn-settle-debt-submit');
+  if (btn.disabled) return;
+  setButtonLoading(btn, true);
+
+  const vehicle = getActiveVehicle();
+  const myDriverName = getMyDriverName(vehicle.id);
+  const creditor = dom.settleDebtCreditor.value;
+  const amount = parseFloat(dom.settleDebtAmount.value);
+
+  if (!myDriverName || !creditor || !amount || amount <= 0) {
+    showToast('Completa todos los campos', 'error');
+    setButtonLoading(btn, false);
+    return;
+  }
+
+  try {
+    // Double-entry: payer gets credit (positive), creditor gets debit (negative)
+    await insertLedgerEntry({
+      vehicle_id: state.activeVehicleId,
+      driver: myDriverName,
+      type: 'transfer',
+      amount: +amount,
+      ref_id: null,
+      description: `Pago a ${creditor}`,
+    });
+    await insertLedgerEntry({
+      vehicle_id: state.activeVehicleId,
+      driver: creditor,
+      type: 'transfer',
+      amount: -(+amount),
+      ref_id: null,
+      description: `Pago recibido de ${myDriverName}`,
+    });
+
+    // Audit log
+    try {
+      await db.from('audit_logs').insert({
+        vehicle_id: state.activeVehicleId,
+        user_id: state.profile?.id || null,
+        action: 'debt_settled',
+        description: `${myDriverName} le pago ${formatCurrency(amount)} a ${creditor}`,
+      });
+    } catch (auditErr) {
+      console.warn('Audit log failed (non-critical):', auditErr.message);
+    }
+
+    showToast(`Pago de ${formatCurrency(amount)} a ${creditor} registrado`);
+    haptic();
+    closeSettleDebtModal();
+    // Full reload to reflect updated balances everywhere
+    await selectVehicle(state.activeVehicleId);
+  } catch (err) {
+    showToast('Error al registrar el pago: ' + err.message, 'error');
+  } finally {
+    setButtonLoading(btn, false);
+  }
 }
 
 // ============================================================
@@ -3866,7 +4001,7 @@ async function init() {
   document.getElementById('auth-email-form').addEventListener('submit', handleEmailAuth);
   document.getElementById('onboarding-form').addEventListener('submit', handleOnboardingSubmit);
 
-  // v18.5: Detail tab switching
+  // v18.5/v18.6: Detail tab switching
   document.querySelectorAll('.detail-tab').forEach(btn => {
     btn.addEventListener('click', () => {
       const tab = btn.dataset.detailTab;
@@ -3877,6 +4012,13 @@ async function init() {
     });
   });
   document.getElementById('btn-load-more-activity').addEventListener('click', loadMoreActivity);
+  document.getElementById('btn-show-less-activity').addEventListener('click', showLessActivity);
+
+  // v18.6: Settle Debt modal
+  dom.btnOpenSettleDebt.addEventListener('click', openSettleDebtModal);
+  document.getElementById('btn-close-settle-debt').addEventListener('click', closeSettleDebtModal);
+  dom.modalSettleDebt.addEventListener('click', (e) => { if (e.target === dom.modalSettleDebt) closeSettleDebtModal(); });
+  document.getElementById('settle-debt-form').addEventListener('submit', handleSettleDebtSubmit);
 
   // v18: Logout — clear cached state (preserve pending invite in localStorage)
   document.getElementById('btn-logout').addEventListener('click', async () => {

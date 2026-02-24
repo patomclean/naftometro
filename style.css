@@ -2422,4 +2422,30 @@ input[type="datetime-local"] {
   flex-shrink: 0;
   align-self: center;
 }
-#btn-load-more-activity { margin-top: 0.75rem; }
+/* --- v18.6: Saldar Deuda button (inside Smart Card) --- */
+.btn-settle {
+  display: block;
+  width: 100%;
+  margin-top: 1rem;
+  padding: 0.75rem 1rem;
+  border-radius: var(--radius-sm);
+  border: 2px solid rgba(255,255,255,0.6);
+  background: rgba(255,255,255,0.15);
+  color: #fff;
+  font-size: 0.95rem;
+  font-weight: 700;
+  font-family: var(--font-family);
+  cursor: pointer;
+  transition: background var(--transition);
+  min-height: 48px;
+  letter-spacing: 0.02em;
+}
+.btn-settle:active { background: rgba(255,255,255,0.28); }
+
+/* --- v18.6: Activity pagination row --- */
+.activity-pagination {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+.activity-pagination .btn { flex: 1; }
