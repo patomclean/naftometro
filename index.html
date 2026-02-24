@@ -10,8 +10,9 @@
   <link rel="manifest" href="manifest.json">
   <link rel="apple-touch-icon" href="icons/icon-192.svg">
   <link rel="icon" type="image/svg+xml" href="icons/icon-192.svg">
-  <link rel="stylesheet" href="style.css?v=18.7">
+  <link rel="stylesheet" href="style.css?v=18.8">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 </head>
 <body>
   <!-- v18: Landing Page -->
@@ -100,11 +101,11 @@
             </button>
           </div>
 
-          <!-- v18.6: Detail Tabs Navigation -->
+          <!-- v18.8: Detail Tabs Navigation -->
           <div class="detail-tabs">
             <button class="detail-tab active" data-detail-tab="summary">&#128202; Mi Resumen</button>
             <button class="detail-tab" data-detail-tab="vehicle">&#128663; El Vehiculo</button>
-            <button class="detail-tab" data-detail-tab="history">&#128203; Historial</button>
+            <button class="detail-tab" data-detail-tab="finances">&#128200; Finanzas</button>
           </div>
 
           <!-- TAB 1: Mi Resumen (default) -->
@@ -118,35 +119,23 @@
                 Saldar Deuda
               </button>
             </div>
-            <!-- Liquidacion sugerida -->
-            <div id="clearing-section" class="glass-card clearing-section hidden">
-              <h4>Liquidacion sugerida</h4>
-              <div id="clearing-list" class="clearing-list"></div>
+            <!-- v18.8: Charts -->
+            <div id="charts-container">
+              <div class="chart-card">
+                <div class="chart-canvas-wrap">
+                  <canvas id="chart-km-donut"></canvas>
+                </div>
+              </div>
+              <div class="chart-card">
+                <div class="chart-canvas-wrap">
+                  <canvas id="chart-cost-bar"></canvas>
+                </div>
+              </div>
             </div>
           </div>
 
-          <!-- TAB 2: El Vehiculo -->
+          <!-- TAB 2: El Vehiculo — bitacora tecnica -->
           <div id="tab-vehicle" class="detail-tab-panel hidden">
-            <!-- Balances de todos los pilotos -->
-            <div class="glass-card">
-              <div class="section-header">
-                <h3>Balances</h3>
-                <div class="section-actions">
-                  <button id="btn-toggle-balances-body" title="Colapsar" aria-expanded="true">&#9660;</button>
-                  <button id="btn-toggle-all-balances" class="btn-icon" title="Expandir todos">&#8645;</button>
-                  <button id="btn-share-balances" class="btn btn-secondary btn-sm">Compartir</button>
-                </div>
-              </div>
-              <div id="balances-body" class="balances-body">
-                <div id="balances-grid" class="balances-grid"></div>
-                <!-- Actor list: km/gastos por piloto -->
-                <div id="summary-grid" class="actor-list" style="margin-top:1rem"></div>
-                <div class="summary-total">
-                  <span>Total gastado:</span>
-                  <strong id="summary-total-value">$0,00</strong>
-                </div>
-              </div>
-            </div>
             <!-- Estado del Capital -->
             <div id="tank-capital-section" class="tank-capital-section hidden">
               <h4>Estado del Capital</h4>
@@ -195,19 +184,49 @@
             </div>
           </div>
 
-          <!-- TAB 3: Historial (activity feed) -->
-          <div id="tab-history" class="detail-tab-panel hidden">
+          <!-- TAB 3: Finanzas — centro financiero -->
+          <div id="tab-finances" class="detail-tab-panel hidden">
+            <!-- Finance header -->
+            <div class="finance-header">
+              <h4>&#128200; Centro de Finanzas</h4>
+              <p>Gestion de Saldos: aca podes ver quien debe a quien y registrar transferencias. Los pagos pueden ser <strong>parciales</strong> — no es necesario saldar todo de una vez.</p>
+            </div>
+            <!-- Second settle-debt trigger -->
+            <button id="btn-open-settle-debt-2" class="btn btn-primary btn-block" style="margin-bottom:1rem">
+              &#128176; Saldar Deuda (Pago Parcial o Total)
+            </button>
+            <!-- Balances de todos los pilotos -->
+            <div class="glass-card">
+              <div class="section-header">
+                <h3>Balances</h3>
+                <div class="section-actions">
+                  <button id="btn-toggle-balances-body" title="Colapsar" aria-expanded="true">&#9660;</button>
+                  <button id="btn-toggle-all-balances" class="btn-icon" title="Expandir todos">&#8645;</button>
+                  <button id="btn-share-balances" class="btn btn-secondary btn-sm">Compartir</button>
+                </div>
+              </div>
+              <div id="balances-body" class="balances-body">
+                <div id="balances-grid" class="balances-grid"></div>
+                <div id="summary-grid" class="actor-list" style="margin-top:1rem"></div>
+                <div class="summary-total">
+                  <span>Total gastado:</span>
+                  <strong id="summary-total-value">$0,00</strong>
+                </div>
+              </div>
+            </div>
+            <!-- Liquidacion sugerida -->
+            <div id="clearing-section" class="glass-card clearing-section hidden">
+              <h4>Liquidacion sugerida</h4>
+              <div id="clearing-list" class="clearing-list"></div>
+            </div>
+            <!-- Financial activity feed -->
             <div id="activity-feed" class="activity-feed"></div>
             <div id="activity-empty" class="empty-state-sm hidden">
-              <p>No hay actividad registrada.</p>
+              <p>No hay movimientos financieros registrados.</p>
             </div>
             <div class="activity-pagination">
-              <button id="btn-show-less-activity" class="btn btn-secondary btn-sm hidden">
-                Ver menos
-              </button>
-              <button id="btn-load-more-activity" class="btn btn-secondary btn-sm hidden">
-                Cargar mas...
-              </button>
+              <button id="btn-show-less-activity" class="btn btn-secondary btn-sm hidden">Ver menos</button>
+              <button id="btn-load-more-activity" class="btn btn-secondary btn-sm hidden">Cargar mas...</button>
             </div>
           </div>
         </div>
@@ -689,6 +708,7 @@
         <h3>Saldar Deuda</h3>
         <button id="btn-close-settle-debt" class="btn-icon">&times;</button>
       </div>
+      <p class="modal-description">Podes hacer pagos <strong>parciales</strong> para ir reduciendo tu saldo de a poco.</p>
       <form id="settle-debt-form">
         <div class="form-group">
           <label for="settle-debt-creditor">A quien le pagas</label>
@@ -709,6 +729,6 @@
   <!-- Toast Container -->
   <div id="toast-container" class="toast-container"></div>
 
-  <script src="app.js?v=18.7"></script>
+  <script src="app.js?v=18.8"></script>
 </body>
 </html>

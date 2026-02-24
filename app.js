@@ -1,4 +1,4 @@
-console.log("🚀 Naftómetro v18.7 cargado correctamente");
+console.log("🚀 Naftómetro v18.8 cargado correctamente");
 
 // ============================================================
 // 1. CONSTANTS & CONFIGURATION
@@ -84,6 +84,9 @@ const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // ============================================================
 
 const PILOT_COLORS = ['#7c5cfc', '#f59e0b', '#06b6d4', '#ec4899', '#10b981', '#f43f5e'];
+
+let kmChart = null;   // v18.8: Chart.js instance (KM doughnut)
+let costChart = null; // v18.8: Chart.js instance (cost bar)
 
 const state = {
   vehicles: [],
@@ -241,11 +244,12 @@ const dom = {
   // v18.5/v18.6: Detail tabs & activity feed
   tabSummary: $('#tab-summary'),
   tabVehicle: $('#tab-vehicle'),
-  tabHistory: $('#tab-history'),
+  tabFinances: $('#tab-finances'),           // v18.8 (renamed from tabHistory)
   smartCard: $('#smart-card'),
   smartCardAmount: $('#smart-card-amount'),
   smartCardStatus: $('#smart-card-status'),
   btnOpenSettleDebt: $('#btn-open-settle-debt'),
+  btnOpenSettleDebt2: $('#btn-open-settle-debt-2'), // v18.8
   activityFeed: $('#activity-feed'),
   activityEmpty: $('#activity-empty'),
   btnLoadMoreActivity: $('#btn-load-more-activity'),
@@ -529,12 +533,12 @@ function switchDetailTab(tab) {
   document.querySelectorAll('.detail-tab').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.detailTab === tab);
   });
-  // v18.6: tabs are summary / vehicle / history
+  // v18.8: tabs are summary / vehicle / finances
   toggleHidden(dom.tabSummary, tab !== 'summary');
   toggleHidden(dom.tabVehicle, tab !== 'vehicle');
-  toggleHidden(dom.tabHistory, tab !== 'history');
-  // Lazy-load activity feed on first visit to the history tab
-  if (tab === 'history' && state.activityItems.length === 0 && state.activeVehicleId) {
+  toggleHidden(dom.tabFinances, tab !== 'finances');
+  // Lazy-load financial activity feed on first visit to the finances tab
+  if (tab === 'finances' && state.activityItems.length === 0 && state.activeVehicleId) {
     buildAndRenderActivity();
   }
 }
@@ -583,18 +587,7 @@ function renderSmartCard() {
 function buildActivityItems() {
   const items = [];
 
-  state.trips.forEach(t => {
-    items.push({
-      type: 'trip',
-      date: new Date(t.occurred_at || t.created_at),
-      icon: '&#128663;',
-      iconClass: 'trip',
-      title: `${t.driver} viajo ${Number(t.km).toLocaleString('es-AR')}km`,
-      meta: t.note || '',
-      amount: '\u2212' + formatCurrency(t.cost),
-    });
-  });
-
+  // v18.8: Financial events only — no trips (trips are in "El Vehículo" tab)
   state.payments.forEach(p => {
     const isSett = p.note && p.note.toLowerCase().includes('saldado') && !p.liters_loaded;
     items.push({
@@ -608,15 +601,16 @@ function buildActivityItems() {
     });
   });
 
-  // Only show deletion audit events (creations are shown via trip/payment rows above)
+  // v18.8: Include debt settlement events + deletion audit events
   state.auditLogs
-    .filter(log => log.action.includes('deleted'))
+    .filter(log => log.action.includes('deleted') || log.action === 'debt_settled')
     .forEach(log => {
+      const isDebt = log.action === 'debt_settled';
       items.push({
         type: 'audit',
         date: new Date(log.created_at),
-        icon: '&#128465;',
-        iconClass: 'delete',
+        icon: isDebt ? '&#128176;' : '&#128465;',
+        iconClass: isDebt ? 'fuel' : 'delete',
         title: log.description,
         meta: '',
         amount: '',
@@ -1530,6 +1524,102 @@ function renderSummary() {
   dom.summaryTotalValue.textContent = formatCurrency(grandTotal);
 }
 
+// v18.8: Chart.js visualizations
+function renderCharts() {
+  const vehicle = getActiveVehicle();
+  if (!vehicle || !window.Chart) return;
+
+  if (kmChart)   { kmChart.destroy();   kmChart = null; }
+  if (costChart) { costChart.destroy(); costChart = null; }
+
+  const drivers = vehicle.drivers || [];
+  const now = new Date();
+
+  // A) Doughnut — KM per pilot, current month
+  const currentMonthTrips = state.trips.filter(t => {
+    const d = new Date(t.occurred_at || t.created_at);
+    return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+  });
+  const kmByDriver = {};
+  drivers.forEach(d => { kmByDriver[d] = 0; });
+  currentMonthTrips.forEach(t => {
+    if (kmByDriver[t.driver] !== undefined) kmByDriver[t.driver] += Number(t.km);
+  });
+  const hasKmData = drivers.some(d => kmByDriver[d] > 0);
+  const monthName = now.toLocaleDateString('es-AR', { month: 'long', year: 'numeric' });
+
+  const ctxKm = document.getElementById('chart-km-donut');
+  if (ctxKm) {
+    kmChart = new Chart(ctxKm, {
+      type: 'doughnut',
+      data: {
+        labels: hasKmData ? drivers : ['Sin datos'],
+        datasets: [{
+          data: hasKmData ? drivers.map(d => kmByDriver[d]) : [1],
+          backgroundColor: hasKmData
+            ? drivers.map((_, i) => PILOT_COLORS[i % PILOT_COLORS.length])
+            : ['rgba(255,255,255,0.1)'],
+          borderWidth: 2,
+          borderColor: 'rgba(0,0,0,0.25)',
+        }],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { position: 'bottom', labels: { color: '#94a3b8', font: { size: 11 }, boxWidth: 12, padding: 10 } },
+          title: { display: true, text: `KM por piloto — ${monthName}`, color: '#e2e8f0', font: { size: 12, weight: '600' }, padding: { bottom: 8 } },
+          tooltip: { callbacks: { label: ctx => hasKmData ? ` ${Number(ctx.raw).toLocaleString('es-AR')} km` : ' Sin datos este mes' } },
+        },
+      },
+    });
+  }
+
+  // B) Bar — Total fuel cost, last 4 months
+  const months = [];
+  for (let i = 3; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    months.push({ year: d.getFullYear(), month: d.getMonth(), label: d.toLocaleDateString('es-AR', { month: 'short', year: '2-digit' }) });
+  }
+  const monthCosts = months.map(m =>
+    state.payments
+      .filter(p => { const d = new Date(p.occurred_at || p.created_at); return d.getMonth() === m.month && d.getFullYear() === m.year; })
+      .reduce((sum, p) => sum + Number(p.amount), 0)
+  );
+
+  const ctxCost = document.getElementById('chart-cost-bar');
+  if (ctxCost) {
+    costChart = new Chart(ctxCost, {
+      type: 'bar',
+      data: {
+        labels: months.map(m => m.label),
+        datasets: [{
+          label: 'Gasto nafta',
+          data: monthCosts,
+          backgroundColor: PILOT_COLORS[0] + 'bb',
+          borderColor: PILOT_COLORS[0],
+          borderWidth: 1,
+          borderRadius: 6,
+          borderSkipped: false,
+        }],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          title: { display: true, text: 'Combustible — ultimos 4 meses', color: '#e2e8f0', font: { size: 12, weight: '600' }, padding: { bottom: 8 } },
+          tooltip: { callbacks: { label: ctx => ' ' + formatCurrency(ctx.raw) } },
+        },
+        scales: {
+          x: { ticks: { color: '#64748b' }, grid: { color: 'rgba(255,255,255,0.04)' } },
+          y: { ticks: { color: '#64748b', callback: v => formatCurrency(v) }, grid: { color: 'rgba(255,255,255,0.04)' } },
+        },
+      },
+    });
+  }
+}
+
 function renderBalances() {
   const vehicle = getActiveVehicle();
   const drivers = vehicle ? (vehicle.drivers || []) : [];
@@ -2338,11 +2428,13 @@ async function selectVehicle(vehicleId) {
     renderBalances();
     renderPaymentHistory();
     renderSmartCard(); // v18.5
+    renderCharts();    // v18.8
     renderVehicleDetail(); // v11: Re-render con datos de tanque
 
     // v18.5: Reset activity feed (lazy-built when user visits that tab)
     state.activityItems = [];
     state.activityPage = 0;
+    if (state.activeDetailTab === 'finances') buildAndRenderActivity(); // v18.8
   } catch (err) {
     showToast('Error al cargar datos: ' + err.message, 'error');
     toggleHidden(dom.tripsLoading, true);
@@ -4056,8 +4148,9 @@ async function init() {
   document.getElementById('btn-load-more-activity').addEventListener('click', loadMoreActivity);
   document.getElementById('btn-show-less-activity').addEventListener('click', showLessActivity);
 
-  // v18.6: Settle Debt modal
+  // v18.6/v18.8: Settle Debt modal
   dom.btnOpenSettleDebt.addEventListener('click', openSettleDebtModal);
+  dom.btnOpenSettleDebt2.addEventListener('click', openSettleDebtModal); // v18.8
   document.getElementById('btn-close-settle-debt').addEventListener('click', closeSettleDebtModal);
   dom.modalSettleDebt.addEventListener('click', (e) => { if (e.target === dom.modalSettleDebt) closeSettleDebtModal(); });
   document.getElementById('settle-debt-form').addEventListener('submit', handleSettleDebtSubmit);
