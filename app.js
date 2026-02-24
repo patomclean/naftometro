@@ -1,4 +1,4 @@
-console.log("🚀 Naftómetro v18.4 cargado correctamente");
+console.log("🚀 Naftómetro v18.5 cargado correctamente");
 
 // ============================================================
 // 1. CONSTANTS & CONFIGURATION
@@ -106,6 +106,10 @@ const state = {
   ledger: [],  // v17: Ledger entries for active vehicle
   profile: null,           // v18: user profile
   driverMappings: [],      // v18: driver mappings for active vehicle
+  auditLogs: [],           // v18.5: audit log entries for active vehicle
+  activityItems: [],       // v18.5: combined & sorted activity feed items
+  activityPage: 0,         // v18.5: activity feed pagination cursor
+  activeDetailTab: 'summary', // v18.5: current detail tab
 };
 
 // ============================================================
@@ -234,6 +238,16 @@ const dom = {
   authModal: $('#auth-modal'),
   onboardingModal: $('#onboarding-modal'),
   avatarClaimModal: $('#avatar-claim-modal'),
+  // v18.5: Detail tabs & activity feed
+  tabSummary: $('#tab-summary'),
+  tabActivity: $('#tab-activity'),
+  tabSettings: $('#tab-settings'),
+  smartCard: $('#smart-card'),
+  smartCardAmount: $('#smart-card-amount'),
+  smartCardStatus: $('#smart-card-status'),
+  activityFeed: $('#activity-feed'),
+  activityEmpty: $('#activity-empty'),
+  btnLoadMoreActivity: $('#btn-load-more-activity'),
 };
 
 // ============================================================
@@ -499,6 +513,155 @@ function getActiveVehicle() {
 }
 
 // ============================================================
+// v18.5: DETAIL TAB SYSTEM
+// ============================================================
+
+const ACTIVITY_PAGE_SIZE = 10;
+
+function switchDetailTab(tab) {
+  state.activeDetailTab = tab;
+  document.querySelectorAll('.detail-tab').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.detailTab === tab);
+  });
+  toggleHidden(dom.tabSummary, tab !== 'summary');
+  toggleHidden(dom.tabActivity, tab !== 'activity');
+  toggleHidden(dom.tabSettings, tab !== 'settings');
+  // Lazy-load activity feed on first visit to the tab
+  if (tab === 'activity' && state.activityItems.length === 0 && state.activeVehicleId) {
+    buildAndRenderActivity();
+  }
+}
+
+function renderSmartCard() {
+  const vehicle = getActiveVehicle();
+  if (!vehicle) { toggleHidden(dom.smartCard, true); return; }
+  const myDriverName = getMyDriverName(vehicle.id);
+  if (!myDriverName) { toggleHidden(dom.smartCard, true); return; }
+
+  let myBalance = 0;
+  if (state.ledger.length > 0) {
+    state.ledger.forEach(e => {
+      if (e.driver === myDriverName) myBalance += Number(e.amount);
+    });
+  } else {
+    state.payments.forEach(p => { if (p.driver === myDriverName) myBalance += Number(p.amount); });
+    state.trips.forEach(t => { if (t.driver === myDriverName) myBalance -= Number(t.cost); });
+  }
+  myBalance = +myBalance.toFixed(2);
+
+  dom.smartCardAmount.textContent = (myBalance > 0 ? '+' : '') + formatCurrency(myBalance);
+  dom.smartCard.classList.remove('debt', 'clear');
+  if (Math.abs(myBalance) < 0.01) {
+    dom.smartCardStatus.innerHTML = '&#10004; Estas al dia';
+  } else if (myBalance > 0) {
+    dom.smartCard.classList.add('clear');
+    dom.smartCardStatus.textContent = 'Te deben plata';
+  } else {
+    dom.smartCard.classList.add('debt');
+    dom.smartCardStatus.textContent = 'Debes plata';
+  }
+  toggleHidden(dom.smartCard, false);
+}
+
+function buildActivityItems() {
+  const items = [];
+
+  state.trips.forEach(t => {
+    items.push({
+      type: 'trip',
+      date: new Date(t.occurred_at || t.created_at),
+      icon: '&#128663;',
+      iconClass: 'trip',
+      title: `${t.driver} viajo ${Number(t.km).toLocaleString('es-AR')}km`,
+      meta: t.note || '',
+      amount: '\u2212' + formatCurrency(t.cost),
+    });
+  });
+
+  state.payments.forEach(p => {
+    const isSett = p.note && p.note.toLowerCase().includes('saldado') && !p.liters_loaded;
+    items.push({
+      type: isSett ? 'settlement' : 'fuel',
+      date: new Date(p.occurred_at || p.created_at),
+      icon: isSett ? '&#128181;' : '&#9981;',
+      iconClass: 'fuel',
+      title: isSett ? `${p.driver} saldo su cuenta` : `${p.driver} cargo nafta`,
+      meta: p.note || '',
+      amount: '+' + formatCurrency(p.amount),
+    });
+  });
+
+  // Only show deletion audit events (creations are shown via trip/payment rows above)
+  state.auditLogs
+    .filter(log => log.action.includes('deleted'))
+    .forEach(log => {
+      items.push({
+        type: 'audit',
+        date: new Date(log.created_at),
+        icon: '&#128465;',
+        iconClass: 'delete',
+        title: log.description,
+        meta: '',
+        amount: '',
+      });
+    });
+
+  items.sort((a, b) => b.date - a.date);
+  state.activityItems = items;
+  state.activityPage = 0;
+}
+
+async function buildAndRenderActivity() {
+  if (state.auditLogs.length === 0 && state.activeVehicleId) {
+    try {
+      state.auditLogs = await fetchAuditLogs(state.activeVehicleId);
+    } catch (e) {
+      console.warn('Could not fetch audit logs:', e.message);
+      state.auditLogs = [];
+    }
+  }
+  buildActivityItems();
+  renderActivityPage();
+}
+
+function renderActivityPage() {
+  const end = (state.activityPage + 1) * ACTIVITY_PAGE_SIZE;
+  const visible = state.activityItems.slice(0, end);
+  const hasMore = end < state.activityItems.length;
+
+  dom.activityFeed.innerHTML = '';
+
+  if (visible.length === 0) {
+    toggleHidden(dom.activityEmpty, false);
+    toggleHidden(dom.btnLoadMoreActivity, true);
+    return;
+  }
+
+  toggleHidden(dom.activityEmpty, true);
+
+  visible.forEach(item => {
+    const el = document.createElement('div');
+    el.className = 'activity-item';
+    el.innerHTML = `
+      <div class="activity-icon ${item.iconClass}">${item.icon}</div>
+      <div class="activity-body">
+        <div class="activity-title">${item.title}</div>
+        <div class="activity-meta">${formatDate(item.date.toISOString())}${item.meta ? ' \u00b7 ' + item.meta : ''}</div>
+      </div>
+      ${item.amount ? `<div class="activity-amount">${item.amount}</div>` : ''}
+    `;
+    dom.activityFeed.appendChild(el);
+  });
+
+  toggleHidden(dom.btnLoadMoreActivity, !hasMore);
+}
+
+function loadMoreActivity() {
+  state.activityPage++;
+  renderActivityPage();
+}
+
+// ============================================================
 // 6. NAVIGATION (3 views)
 // ============================================================
 
@@ -732,6 +895,17 @@ async function insertDriverMapping(mapping) {
     .single();
   if (error) throw error;
   return data;
+}
+
+// v18.5: Audit Logs CRUD
+async function fetchAuditLogs(vehicleId) {
+  const { data, error } = await db
+    .from('audit_logs')
+    .select('*')
+    .eq('vehicle_id', vehicleId)
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return data || [];
 }
 
 // v17: Migrate legacy balances to ledger (opening_balance entries)
@@ -1956,6 +2130,9 @@ async function selectVehicle(vehicleId) {
   state.lastVisitedVehicleId = vehicleId;
   renderVehicleDetail();
 
+  // v18.5: Always open on Resumen tab when switching vehicle
+  switchDetailTab('summary');
+
   if (state.currentTab !== 'detail') {
     navigateTo('detail');
   } else {
@@ -1970,16 +2147,18 @@ async function selectVehicle(vehicleId) {
 
   try {
     const vehicle = getActiveVehicle();
-    const [trips, payments, ledger, driverMappings] = await Promise.all([
+    const [trips, payments, ledger, driverMappings, auditLogs] = await Promise.all([
       fetchTrips(vehicleId),
       fetchPayments(vehicleId),
       fetchLedger(vehicleId),
       fetchDriverMappings(vehicleId),
+      fetchAuditLogs(vehicleId), // v18.5
     ]);
     state.trips = trips;
     state.payments = payments;
     state.ledger = ledger;
     state.driverMappings = driverMappings;
+    state.auditLogs = auditLogs; // v18.5
 
     // v17: Auto-migrate legacy balances to ledger on first load
     if (state.ledger.length === 0 && (trips.length > 0 || payments.length > 0) && vehicle) {
@@ -1991,7 +2170,12 @@ async function selectVehicle(vehicleId) {
     renderSummary();
     renderBalances();
     renderPaymentHistory();
+    renderSmartCard(); // v18.5
     renderVehicleDetail(); // v11: Re-render con datos de tanque
+
+    // v18.5: Reset activity feed (lazy-built when user visits that tab)
+    state.activityItems = [];
+    state.activityPage = 0;
   } catch (err) {
     showToast('Error al cargar datos: ' + err.message, 'error');
     toggleHidden(dom.tripsLoading, true);
@@ -3682,6 +3866,18 @@ async function init() {
   document.getElementById('auth-email-form').addEventListener('submit', handleEmailAuth);
   document.getElementById('onboarding-form').addEventListener('submit', handleOnboardingSubmit);
 
+  // v18.5: Detail tab switching
+  document.querySelectorAll('.detail-tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const tab = btn.dataset.detailTab;
+      if (tab !== state.activeDetailTab) {
+        switchDetailTab(tab);
+        haptic();
+      }
+    });
+  });
+  document.getElementById('btn-load-more-activity').addEventListener('click', loadMoreActivity);
+
   // v18: Logout — clear cached state (preserve pending invite in localStorage)
   document.getElementById('btn-logout').addEventListener('click', async () => {
     await db.auth.signOut();
@@ -3695,6 +3891,9 @@ async function init() {
     state.allPayments = [];
     state.profile = null;
     state.driverMappings = [];
+    state.auditLogs = [];      // v18.5
+    state.activityItems = [];  // v18.5
+    state.activityPage = 0;    // v18.5
     dom.vehiclesGrid.innerHTML = '';
     dom.tripsTbody.innerHTML = '';
     dom.paymentsList.innerHTML = '';

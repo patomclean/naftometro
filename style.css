@@ -2290,3 +2290,136 @@ input[type="datetime-local"] {
 .vehicle-selector-list { display:flex; flex-direction:column; gap:0.5rem; }
 .vehicle-selector-item { width:100%; padding:0.75rem 1rem; border-radius:var(--radius-sm); border:1px solid var(--glass-border); background:rgba(255,255,255,0.03); color:var(--text-primary); font-size:0.9rem; cursor:pointer; font-family:var(--font-family); text-align:left; min-height:44px; }
 .vehicle-selector-item:active { background:rgba(255,255,255,0.08); }
+
+/* ============================================================
+   v18.5: Detail Tabs
+   ============================================================ */
+.detail-tabs {
+  display: flex;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  padding: 0.25rem;
+  margin-bottom: 1rem;
+}
+.detail-tab {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.3rem;
+  padding: 0.6rem 0.4rem;
+  border: none;
+  border-radius: calc(var(--radius-lg) - 2px);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition);
+  font-family: var(--font-family);
+  min-height: 44px;
+  line-height: 1.2;
+  text-align: center;
+}
+.detail-tab.active {
+  background: var(--color-primary);
+  color: #fff;
+}
+.detail-tab:not(.active):active {
+  background: rgba(255,255,255,0.05);
+}
+.detail-tab-panel.hidden { display: none; }
+
+/* ============================================================
+   v18.5: Smart Card (balance personal)
+   ============================================================ */
+.smart-card {
+  background: linear-gradient(135deg, var(--color-primary), #a78bfa);
+  border-radius: var(--radius-lg);
+  padding: 1.25rem 1rem;
+  margin-bottom: 1rem;
+  text-align: center;
+  box-shadow: 0 8px 24px rgba(124,92,252,0.3);
+}
+.smart-card-label {
+  font-size: 0.75rem;
+  color: rgba(255,255,255,0.7);
+  margin-bottom: 0.35rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.smart-card-amount {
+  font-size: 2rem;
+  font-weight: 800;
+  color: #fff;
+  line-height: 1.2;
+  margin-bottom: 0.25rem;
+}
+.smart-card-status {
+  font-size: 0.82rem;
+  color: rgba(255,255,255,0.85);
+  font-weight: 600;
+}
+.smart-card.debt {
+  background: linear-gradient(135deg, #ef4444, #f97316);
+  box-shadow: 0 8px 24px rgba(239,68,68,0.3);
+}
+.smart-card.clear {
+  background: linear-gradient(135deg, #22c55e, #10b981);
+  box-shadow: 0 8px 24px rgba(34,197,94,0.3);
+}
+
+/* ============================================================
+   v18.5: Activity Feed
+   ============================================================ */
+.activity-feed {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+.activity-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.85rem;
+  border-radius: var(--radius-md);
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+}
+.activity-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.9rem;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+.activity-icon.trip   { background: rgba(124,92,252,0.15); }
+.activity-icon.fuel   { background: rgba(34,197,94,0.15); }
+.activity-icon.delete { background: rgba(239,68,68,0.15); }
+.activity-body { flex: 1; min-width: 0; }
+.activity-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.35;
+}
+.activity-meta {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  margin-top: 0.15rem;
+}
+.activity-amount {
+  font-size: 0.83rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  white-space: nowrap;
+  flex-shrink: 0;
+  align-self: center;
+}
+#btn-load-more-activity { margin-top: 0.75rem; }

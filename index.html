@@ -10,7 +10,7 @@
   <link rel="manifest" href="manifest.json">
   <link rel="apple-touch-icon" href="icons/icon-192.svg">
   <link rel="icon" type="image/svg+xml" href="icons/icon-192.svg">
-  <link rel="stylesheet" href="style.css?v=18.4">
+  <link rel="stylesheet" href="style.css?v=18.5">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
@@ -100,40 +100,71 @@
             </button>
           </div>
 
-          <!-- Summary Card -->
-          <div class="glass-card">
-            <div class="section-header">
-              <h3>Resumen de gastos</h3>
-              <button id="btn-clear-trips" class="btn btn-danger btn-sm">Limpiar viajes</button>
-            </div>
-            <div id="summary-grid" class="summary-grid"></div>
-            <div class="summary-total">
-              <span>Total:</span>
-              <strong id="summary-total-value">$0,00</strong>
-            </div>
+          <!-- v18.5: Detail Tabs Navigation -->
+          <div class="detail-tabs">
+            <button class="detail-tab active" data-detail-tab="summary">&#128202; Resumen</button>
+            <button class="detail-tab" data-detail-tab="activity">&#128203; Actividad</button>
+            <button class="detail-tab" data-detail-tab="settings">&#9881; Ajustes</button>
           </div>
 
-          <!-- Balances Card -->
-          <div class="glass-card">
-            <div class="section-header">
-              <h3>Balances</h3>
-              <div class="section-actions">
-                <button id="btn-toggle-all-balances" class="btn-icon" title="Expandir todos">&#9660;</button>
-                <button id="btn-share-balances" class="btn btn-secondary btn-sm">Compartir</button>
+          <!-- TAB: Resumen -->
+          <div id="tab-summary" class="detail-tab-panel">
+            <!-- Smart Card: balance personal del usuario -->
+            <div id="smart-card" class="smart-card hidden">
+              <div class="smart-card-label">Tu balance</div>
+              <div id="smart-card-amount" class="smart-card-amount">$0,00</div>
+              <div id="smart-card-status" class="smart-card-status"></div>
+            </div>
+            <!-- Resumen de gastos -->
+            <div class="glass-card">
+              <div class="section-header">
+                <h3>Resumen de gastos</h3>
+              </div>
+              <div id="summary-grid" class="summary-grid"></div>
+              <div class="summary-total">
+                <span>Total:</span>
+                <strong id="summary-total-value">$0,00</strong>
               </div>
             </div>
-            <div id="balances-grid" class="balances-grid"></div>
-            <div id="clearing-section" class="clearing-section hidden">
+            <!-- Liquidacion sugerida (glass-card propio) -->
+            <div id="clearing-section" class="glass-card clearing-section hidden">
               <h4>Liquidacion sugerida</h4>
               <div id="clearing-list" class="clearing-list"></div>
             </div>
-            <!-- v15.1: Tank Capital -->
+            <!-- Estado del Capital -->
             <div id="tank-capital-section" class="tank-capital-section hidden">
               <h4>Estado del Capital</h4>
               <p id="tank-capital-text" class="tank-capital-text"></p>
             </div>
-            <div id="payments-section">
-              <div class="section-header" style="margin-top:1rem">
+          </div>
+
+          <!-- TAB: Actividad -->
+          <div id="tab-activity" class="detail-tab-panel hidden">
+            <div id="activity-feed" class="activity-feed"></div>
+            <div id="activity-empty" class="empty-state-sm hidden">
+              <p>No hay actividad registrada.</p>
+            </div>
+            <button id="btn-load-more-activity" class="btn btn-secondary btn-block btn-sm hidden">
+              Cargar mas...
+            </button>
+          </div>
+
+          <!-- TAB: Ajustes -->
+          <div id="tab-settings" class="detail-tab-panel hidden">
+            <!-- Balances detallados -->
+            <div class="glass-card">
+              <div class="section-header">
+                <h3>Balances</h3>
+                <div class="section-actions">
+                  <button id="btn-toggle-all-balances" class="btn-icon" title="Expandir todos">&#9660;</button>
+                  <button id="btn-share-balances" class="btn btn-secondary btn-sm">Compartir</button>
+                </div>
+              </div>
+              <div id="balances-grid" class="balances-grid"></div>
+            </div>
+            <!-- Cargas de combustible -->
+            <div class="glass-card">
+              <div class="section-header">
                 <h4 class="payments-title">Cargas de combustible</h4>
               </div>
               <div id="payments-list" class="payments-list"></div>
@@ -141,34 +172,36 @@
                 <p>No hay cargas registradas.</p>
               </div>
             </div>
-          </div>
-
-          <!-- Trip History Card -->
-          <div class="glass-card">
-            <h3>Historial de viajes</h3>
-            <div id="trips-loading" class="loading-spinner hidden">
-              <div class="spinner"></div>
-              <span>Cargando...</span>
-            </div>
-            <div id="trips-empty" class="empty-state hidden">
-              <p>No hay viajes registrados para este vehiculo.</p>
-            </div>
-            <div class="table-wrapper">
-              <table id="trips-table" class="trips-table hidden">
-                <thead>
-                  <tr>
-                    <th>Fecha</th>
-                    <th>Piloto</th>
-                    <th>Km</th>
-                    <th>Litros</th>
-                    <th>Costo</th>
-                    <th></th>
-                    <th>Nota</th>
-                    <th></th>
-                  </tr>
-                </thead>
-                <tbody id="trips-tbody"></tbody>
-              </table>
+            <!-- Historial de viajes -->
+            <div class="glass-card">
+              <div class="section-header">
+                <h3>Historial de viajes</h3>
+                <button id="btn-clear-trips" class="btn btn-danger btn-sm">Limpiar viajes</button>
+              </div>
+              <div id="trips-loading" class="loading-spinner hidden">
+                <div class="spinner"></div>
+                <span>Cargando...</span>
+              </div>
+              <div id="trips-empty" class="empty-state hidden">
+                <p>No hay viajes registrados para este vehiculo.</p>
+              </div>
+              <div class="table-wrapper">
+                <table id="trips-table" class="trips-table hidden">
+                  <thead>
+                    <tr>
+                      <th>Fecha</th>
+                      <th>Piloto</th>
+                      <th>Km</th>
+                      <th>Litros</th>
+                      <th>Costo</th>
+                      <th></th>
+                      <th>Nota</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody id="trips-tbody"></tbody>
+                </table>
+              </div>
             </div>
           </div>
         </div>
@@ -646,6 +679,6 @@
   <!-- Toast Container -->
   <div id="toast-container" class="toast-container"></div>
 
-  <script src="app.js?v=18.4"></script>
+  <script src="app.js?v=18.5"></script>
 </body>
 </html>
