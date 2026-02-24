@@ -1,4 +1,4 @@
-console.log("🚀 Naftómetro v18.8 cargado correctamente");
+console.log("🚀 Naftómetro v18.9 cargado correctamente");
 
 // ============================================================
 // 1. CONSTANTS & CONFIGURATION
@@ -1548,16 +1548,22 @@ function renderCharts() {
   const hasKmData = drivers.some(d => kmByDriver[d] > 0);
   const monthName = now.toLocaleDateString('es-AR', { month: 'long', year: 'numeric' });
 
+  // v18.9: Filter out pilots with 0 km this month; sort ascending (lowest → highest clockwise)
+  const activeDrivers = hasKmData
+    ? [...drivers].filter(d => kmByDriver[d] > 0).sort((a, b) => kmByDriver[a] - kmByDriver[b])
+    : [];
+  const hasActiveDrivers = activeDrivers.length > 0;
+
   const ctxKm = document.getElementById('chart-km-donut');
   if (ctxKm) {
     kmChart = new Chart(ctxKm, {
       type: 'doughnut',
       data: {
-        labels: hasKmData ? drivers : ['Sin datos'],
+        labels: hasActiveDrivers ? activeDrivers : ['Sin datos este mes'],
         datasets: [{
-          data: hasKmData ? drivers.map(d => kmByDriver[d]) : [1],
-          backgroundColor: hasKmData
-            ? drivers.map((_, i) => PILOT_COLORS[i % PILOT_COLORS.length])
+          data: hasActiveDrivers ? activeDrivers.map(d => kmByDriver[d]) : [1],
+          backgroundColor: hasActiveDrivers
+            ? activeDrivers.map(d => PILOT_COLORS[drivers.indexOf(d) % PILOT_COLORS.length])
             : ['rgba(255,255,255,0.1)'],
           borderWidth: 2,
           borderColor: 'rgba(0,0,0,0.25)',
@@ -1569,22 +1575,27 @@ function renderCharts() {
         plugins: {
           legend: { position: 'bottom', labels: { color: '#94a3b8', font: { size: 11 }, boxWidth: 12, padding: 10 } },
           title: { display: true, text: `KM por piloto — ${monthName}`, color: '#e2e8f0', font: { size: 12, weight: '600' }, padding: { bottom: 8 } },
-          tooltip: { callbacks: { label: ctx => hasKmData ? ` ${Number(ctx.raw).toLocaleString('es-AR')} km` : ' Sin datos este mes' } },
+          tooltip: { callbacks: { label: ctx => hasActiveDrivers ? ` ${Number(ctx.raw).toLocaleString('es-AR')} km` : ' Sin datos este mes' } },
         },
       },
     });
   }
 
-  // B) Bar — Total fuel cost, last 4 months
+  // v18.9: Dual-column — Litros cargados vs KM recorridos, last 4 months (efficiency view)
   const months = [];
   for (let i = 3; i >= 0; i--) {
     const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
     months.push({ year: d.getFullYear(), month: d.getMonth(), label: d.toLocaleDateString('es-AR', { month: 'short', year: '2-digit' }) });
   }
-  const monthCosts = months.map(m =>
+  const monthLiters = months.map(m =>
     state.payments
-      .filter(p => { const d = new Date(p.occurred_at || p.created_at); return d.getMonth() === m.month && d.getFullYear() === m.year; })
-      .reduce((sum, p) => sum + Number(p.amount), 0)
+      .filter(p => { const d = new Date(p.occurred_at || p.created_at); return d.getMonth() === m.month && d.getFullYear() === m.year && Number(p.liters_loaded) > 0; })
+      .reduce((sum, p) => sum + Number(p.liters_loaded || 0), 0)
+  );
+  const monthKm = months.map(m =>
+    state.trips
+      .filter(t => { const d = new Date(t.occurred_at || t.created_at); return d.getMonth() === m.month && d.getFullYear() === m.year; })
+      .reduce((sum, t) => sum + Number(t.km || 0), 0)
   );
 
   const ctxCost = document.getElementById('chart-cost-bar');
@@ -1593,27 +1604,41 @@ function renderCharts() {
       type: 'bar',
       data: {
         labels: months.map(m => m.label),
-        datasets: [{
-          label: 'Gasto nafta',
-          data: monthCosts,
-          backgroundColor: PILOT_COLORS[0] + 'bb',
-          borderColor: PILOT_COLORS[0],
-          borderWidth: 1,
-          borderRadius: 6,
-          borderSkipped: false,
-        }],
+        datasets: [
+          {
+            label: 'Litros',
+            data: monthLiters,
+            backgroundColor: PILOT_COLORS[2] + 'bb',
+            borderColor: PILOT_COLORS[2],
+            borderWidth: 1,
+            borderRadius: 5,
+            borderSkipped: false,
+            yAxisID: 'y',
+          },
+          {
+            label: 'KM',
+            data: monthKm,
+            backgroundColor: PILOT_COLORS[0] + 'bb',
+            borderColor: PILOT_COLORS[0],
+            borderWidth: 1,
+            borderRadius: 5,
+            borderSkipped: false,
+            yAxisID: 'y1',
+          },
+        ],
       },
       options: {
         responsive: true,
         maintainAspectRatio: false,
         plugins: {
-          legend: { display: false },
-          title: { display: true, text: 'Combustible — ultimos 4 meses', color: '#e2e8f0', font: { size: 12, weight: '600' }, padding: { bottom: 8 } },
-          tooltip: { callbacks: { label: ctx => ' ' + formatCurrency(ctx.raw) } },
+          legend: { display: true, labels: { color: '#94a3b8', font: { size: 11 }, boxWidth: 12, padding: 10 } },
+          title: { display: true, text: 'Litros vs KM — ultimos 4 meses', color: '#e2e8f0', font: { size: 12, weight: '600' }, padding: { bottom: 8 } },
+          tooltip: { callbacks: { label: ctx => ctx.datasetIndex === 0 ? ` ${Number(ctx.raw).toFixed(1)} L` : ` ${Number(ctx.raw).toLocaleString('es-AR')} km` } },
         },
         scales: {
           x: { ticks: { color: '#64748b' }, grid: { color: 'rgba(255,255,255,0.04)' } },
-          y: { ticks: { color: '#64748b', callback: v => formatCurrency(v) }, grid: { color: 'rgba(255,255,255,0.04)' } },
+          y:  { position: 'left',  ticks: { color: PILOT_COLORS[2], callback: v => v + ' L'  }, grid: { color: 'rgba(255,255,255,0.04)' } },
+          y1: { position: 'right', ticks: { color: PILOT_COLORS[0], callback: v => v + ' km' }, grid: { drawOnChartArea: false } },
         },
       },
     });
@@ -1665,7 +1690,11 @@ function renderBalances() {
     state.trips.forEach(t => { if (debitsByDriver[t.driver] !== undefined) debitsByDriver[t.driver] += Number(t.cost); });
   }
 
-  drivers.forEach((driver, idx) => {
+  // v18.9: Sort drivers — most debt (most negative net) first → most credit (most positive) last
+  const sortedDrivers = [...drivers].sort((a, b) => netByDriver[a] - netByDriver[b]);
+
+  sortedDrivers.forEach((driver) => {
+    const idx = drivers.indexOf(driver); // preserve original PILOT_COLORS assignment
     const net = +netByDriver[driver].toFixed(2);
     const credit = creditsByDriver[driver];
     const debit = debitsByDriver[driver];
@@ -1808,7 +1837,8 @@ function renderTankCapital() {
 }
 
 function renderPaymentHistory() {
-  const payments = state.payments;
+  // v18.9: Only real fuel loads (liters_loaded > 0) — excludes transfers, settlements, adjustments
+  const payments = state.payments.filter(p => Number(p.liters_loaded) > 0);
   const vehicle = getActiveVehicle();
   const vehicleDrivers = vehicle ? (vehicle.drivers || []) : [];
   dom.paymentsList.innerHTML = '';
