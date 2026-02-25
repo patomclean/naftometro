@@ -1,4 +1,4 @@
-console.log("🚀 Naftómetro v18.10 cargado correctamente");
+console.log("🚀 Naftómetro v18.11 cargado correctamente");
 
 // ============================================================
 // 1. CONSTANTS & CONFIGURATION
@@ -4162,6 +4162,11 @@ async function init() {
   // Register service worker
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('/sw.js').catch(() => {});
+    // v18.11: Auto-reload when a new SW takes control via skipWaiting()
+    let refreshing = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (!refreshing) { refreshing = true; window.location.reload(); }
+    });
   }
 
   // v18: Auth bindings (landing page + auth modal)
