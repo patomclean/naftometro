@@ -13,7 +13,7 @@
   <link rel="manifest" href="manifest.json">
   <link rel="apple-touch-icon" href="icons/icon-192.svg">
   <link rel="icon" type="image/svg+xml" href="icons/icon-192.svg">
-  <link rel="stylesheet" href="style.css?v=18.13">
+  <link rel="stylesheet" href="style.css?v=18.14">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 </head>
@@ -730,9 +730,21 @@
     </div>
   </div>
 
+  <!-- v18.14: Contextual Identity Claim Modal -->
+  <div id="modal-claim-identity" class="modal-overlay hidden">
+    <div class="modal glass-card modal-sm">
+      <div class="modal-header">
+        <h3>&#127881; Bienvenido al vehiculo!</h3>
+      </div>
+      <p class="avatar-claim-subtitle">&#10067; Que piloto eres en este auto? Selecciona tu nombre para ver tus gastos y saldos.</p>
+      <div id="claim-identity-list" class="avatar-claim-list"></div>
+      <button id="btn-skip-claim-identity" class="btn btn-secondary btn-block">Solo soy observador (Omitir)</button>
+    </div>
+  </div>
+
   <!-- Toast Container -->
   <div id="toast-container" class="toast-container"></div>
 
-  <script src="app.js?v=18.13"></script>
+  <script src="app.js?v=18.14"></script>
 </body>
 </html>

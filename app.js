@@ -1,4 +1,4 @@
-console.log("🚀 Naftómetro v18.13 cargado correctamente");
+console.log("🚀 Naftómetro v18.14 cargado correctamente");
 
 // ============================================================
 // 1. CONSTANTS & CONFIGURATION
@@ -241,6 +241,7 @@ const dom = {
   authModal: $('#auth-modal'),
   onboardingModal: $('#onboarding-modal'),
   avatarClaimModal: $('#avatar-claim-modal'),
+  modalClaimIdentity: $('#modal-claim-identity'), // v18.14
   // v18.5/v18.6: Detail tabs & activity feed
   tabSummary: $('#tab-summary'),
   tabVehicle: $('#tab-vehicle'),
@@ -2479,6 +2480,11 @@ async function selectVehicle(vehicleId) {
     renderCharts();    // v18.8
     renderVehicleDetail(); // v11: Re-render con datos de tanque
 
+    // v18.14: Auto-popup identity claim if logged-in user has no mapping for this vehicle
+    if (state.profile && !driverMappings.some(m => m.user_id === state.profile.id)) {
+      openClaimIdentityModal(vehicle);
+    }
+
     // v18.5: Reset activity feed (lazy-built when user visits that tab)
     state.activityItems = [];
     state.activityPage = 0;
@@ -4018,6 +4024,53 @@ async function handleOnboardingSubmit(e) {
   }
 }
 
+// v18.14: Contextual Identity Claim Modal
+function openClaimIdentityModal(vehicle) {
+  const claimedNames = state.driverMappings.map(m => m.driver_name);
+  const available = (vehicle.drivers || []).filter(d => !claimedNames.includes(d));
+
+  // All driver slots taken — nothing to offer, skip silently
+  if (available.length === 0) return;
+
+  const list = document.getElementById('claim-identity-list');
+  list.innerHTML = '';
+  available.forEach(name => {
+    const btn = document.createElement('button');
+    btn.className = 'avatar-claim-btn';
+    btn.textContent = name;
+    btn.addEventListener('click', () => handleClaimIdentity(vehicle.id, name, btn));
+    list.appendChild(btn);
+  });
+
+  toggleHidden(dom.modalClaimIdentity, false);
+}
+
+function closeClaimIdentityModal() {
+  toggleHidden(dom.modalClaimIdentity, true);
+}
+
+async function handleClaimIdentity(vehicleId, driverName, btn) {
+  const original = btn.textContent;
+  btn.textContent = 'Vinculando...';
+  btn.disabled = true;
+  try {
+    await insertDriverMapping({
+      vehicle_id: vehicleId,
+      user_id: state.profile.id,
+      driver_name: driverName,
+    });
+    state.driverMappings = await fetchDriverMappings(vehicleId);
+    closeClaimIdentityModal();
+    renderSmartCard();
+    renderBalances();
+    showToast(`Vinculado como "${driverName}"`);
+  } catch (err) {
+    btn.textContent = original;
+    btn.disabled = false;
+    showToast('Error al vincularse: ' + err.message, 'error');
+  }
+}
+
 // v18: Avatar Claim (Tricount-style)
 async function showAvatarClaimModal(vehicleId, drivers) {
   const mappings = await fetchDriverMappings(vehicleId);
@@ -4205,6 +4258,7 @@ async function init() {
   document.querySelectorAll('#btn-open-settle-debt, #btn-open-settle-debt-2').forEach(btn => {
     btn.addEventListener('click', openSettleDebtModal);
   });
+  document.getElementById('btn-skip-claim-identity').addEventListener('click', closeClaimIdentityModal); // v18.14
   document.getElementById('btn-close-settle-debt').addEventListener('click', closeSettleDebtModal);
   dom.modalSettleDebt.addEventListener('click', (e) => { if (e.target === dom.modalSettleDebt) closeSettleDebtModal(); });
   document.getElementById('settle-debt-form').addEventListener('submit', handleSettleDebtSubmit);
