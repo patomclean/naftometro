@@ -1,4 +1,4 @@
-console.log("🚀 Naftómetro v18.12 cargado correctamente");
+console.log("🚀 Naftómetro v18.13 cargado correctamente");
 
 // ============================================================
 // 1. CONSTANTS & CONFIGURATION
@@ -4235,11 +4235,11 @@ async function init() {
   const { data: { session } } = await db.auth.getSession();
   if (session) {
     showApp();
+    // v18.13: Load profile BEFORE loadAppData so renderSmartCard has state.profile available
+    state.profile = await fetchProfile();
     await loadAppData();
     // v18: Onboarding check
-    const profile = await fetchProfile();
-    state.profile = profile;
-    if (profile && !profile.onboarding_completed) {
+    if (state.profile && !state.profile.onboarding_completed) {
       await showOnboardingModal();
     }
     await processPendingInvite();
@@ -4251,13 +4251,13 @@ async function init() {
   db.auth.onAuthStateChange(async (event, session) => {
     if (event === 'SIGNED_IN' && session) {
       showApp();
+      // v18.13: Load profile BEFORE loadAppData so renderSmartCard has state.profile available
+      state.profile = await fetchProfile();
       if (state.vehicles.length === 0) {
         await loadAppData();
       }
       // v18: Onboarding check
-      const profile = await fetchProfile();
-      state.profile = profile;
-      if (profile && !profile.onboarding_completed) {
+      if (state.profile && !state.profile.onboarding_completed) {
         await showOnboardingModal();
       }
       await processPendingInvite();
