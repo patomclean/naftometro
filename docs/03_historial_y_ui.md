@@ -2,7 +2,7 @@
 
 ## Linea de Tiempo del Proyecto
 
-El proyecto se desarrollo entre el 12 y el 20 de febrero de 2026, con 39 commits en total. La evolucion se organiza en fases:
+El proyecto se desarrolla desde el 12 de febrero de 2026, con 39+ commits. La version actual es v18.14. La evolucion se organiza en fases:
 
 ---
 
@@ -172,13 +172,169 @@ Esta fase se enfoco en resolver problemas reales detectados en QA con iPhone 15.
 - **Contenido educativo**: Explica como funciona la app, diferencia entre Auditado (pill verde) y Estimado (pill gris), y por que confiar en los numeros
 - **Persistencia via localStorage**: Clave `naftometro_welcome_seen` — el modal solo aparece una vez por dispositivo
 - **Boton "Empezar el viaje"**: Cierra el modal con fade-out de 300ms y guarda el estado
-- **Posicion**: Reutiliza `.modal-overlay` con centrado flex + clase `.welcome-modal` dentro de `.glass-card`
 
 ### v15.10 — Welcome Modal Polish
 - **Desktop zoom**: En `@media (min-width: 768px)`, `.welcome-modal` con `transform: scale(1.25)` para que sea mas grande y legible en pantallas grandes
-- **Mobile centering**: `margin: auto` en `.welcome-modal` para centrado vertical y horizontal correcto en todos los dispositivos
-- **Click-outside-to-close**: Listener en el overlay que detecta clicks fuera del modal y llama a `closeWelcomeModal()` — misma transicion fade-out que el boton
-- **Refactor JS**: Logica de cierre extraida a `closeWelcomeModal()` reutilizable (boton y click-outside comparten la misma funcion)
+- **Mobile centering**: `margin: auto` en `.welcome-modal` para centrado vertical y horizontal correcto
+- **Click-outside-to-close**: Listener en el overlay que detecta clicks fuera del modal
+- **Refactor JS**: Logica de cierre extraida a `closeWelcomeModal()` reutilizable
+
+---
+
+## Fase 6: Multi-Tenant y Compartir (20-22 Feb 2026, v16.x)
+
+### v16.0 — Arquitectura Multi-Tenant (SaaS)
+
+Migracion critica que convierte la app de anonima a multi-usuario con seguridad real:
+
+- **Tabla `vehicle_members`**: Relaciona usuarios con vehiculos con roles `owner` / `member`
+- **Campo `owner_id`** en vehicles: FK a `auth.users`
+- **Funciones helper SQL**:
+  - `is_vehicle_member(vid)` — Verifica si el usuario logueado es miembro del vehiculo
+  - `is_vehicle_owner(vid)` — Verifica si el usuario logueado es dueno del vehiculo
+- **Row Level Security (RLS)** habilitado en todas las tablas
+- **Trigger `on_vehicle_created`**: Al crear un vehiculo, auto-inserta al creador como `owner` en `vehicle_members`
+- **Politicas RLS**:
+  - `SELECT`: solo miembros del vehiculo
+  - `INSERT trips/payments`: cualquier miembro
+  - `UPDATE/DELETE vehicles`: solo el owner
+  - `UPDATE/DELETE trips/payments`: cualquier miembro
+
+### v16.2 — Codigos de Invitacion
+
+- **Campo `invite_code`** en vehicles: codigo unico de 6 caracteres (XXXXXX)
+- **Generacion**: `generateInviteCode(vehicleId)` genera un codigo aleatorio y lo guarda
+- **Funcion SQL `join_vehicle_by_code(code)`**: RPC que valida el codigo e inserta al usuario en `vehicle_members` con rol `member`
+- **UI**: Boton de compartir en la tarjeta del vehiculo, modal para unirse con codigo
+
+---
+
+## Fase 7: Libro Contable Inmutable (v17, Feb 2026)
+
+### v17.0 — Ledger Schema
+
+La mayor refactorizacion arquitectural del proyecto: reemplazar el calculo de balances en tiempo real (sumando payments y trips) por un **libro contable append-only**.
+
+**Cambios en la DB:**
+- Nueva tabla `ledger` con tipos: `trip_cost`, `fuel_payment`, `transfer`, `tank_audit_adjustment`, `opening_balance`
+- Nuevas columnas en `vehicles`: `current_ppp`, `virtual_liters`, `correction_factor`, `last_full_tank_at`
+- RLS: solo SELECT e INSERT (no UPDATE ni DELETE directo en ledger)
+
+**Cambios en la app:**
+- `fetchLedger(vehicleId)` — carga el libro contable del vehiculo activo
+- `insertLedgerEntry(entry)` — escribe entradas inmutables
+- `migrateToLedger(vehicleId, drivers)` — migra vehiculos legacy con entradas `opening_balance`
+- Los balances se calculan como `SUM(ledger.amount WHERE driver = piloto)`
+- El precio PPP y los litros virtuales persisten en la DB (no se recalculan en cada carga)
+
+---
+
+## Fase 8: Autenticacion y Perfiles (v18, Feb-Mar 2026)
+
+### v18.0 — Auth, Profiles y Driver Mappings
+
+- **Supabase Email Auth**: Login y registro con email/password
+- **Tabla `profiles`**: Perfil del usuario (display_name, currency, onboarding_completed)
+- **Trigger `on_auth_user_created`**: Crea perfil automaticamente al registrarse
+- **Tabla `vehicle_driver_mappings`**: Vincula usuarios con nombres de pilotos (estilo Tricount)
+  - UNIQUE (vehicle_id, user_id) — un usuario, un piloto por vehiculo
+  - UNIQUE (vehicle_id, driver_name) — un piloto no puede ser reclamado dos veces
+- **Avatar Claim Modal**: Al unirse a un vehiculo, popup para elegir el piloto correspondiente
+- **Auth Modal**: Login/registro con email y password
+- **Onboarding Modal**: Completar display_name y preferencia de moneda
+- **`getMyDriverName(vehicleId)`**: Resuelve el nombre del piloto del usuario logueado
+
+### v18.4 — Integridad de Datos
+
+- **Cascade triggers en PostgreSQL**:
+  - `on_trip_deleted` (BEFORE DELETE): elimina ledger entries con `type='trip_cost'` y `ref_id=trip.id`
+  - `on_payment_deleted` (BEFORE DELETE): elimina ledger entries con `type IN ('fuel_payment','transfer')` y `ref_id=payment.id`
+- **Limpieza de orphans**: DELETE en ledger de entries con ref_id que ya no existen en trips/payments
+- **Debounce en botones de submit**: `btn.disabled = true` inmediatamente para evitar doble submit
+- **Full state reload**: Al eliminar un trip/payment, se re-fetchea todo el estado (trips + payments + ledger) para coherencia
+
+### v18.5 — Sub-tabs y Activity Feed
+
+**UI:**
+- La vista Detalle ahora tiene 3 sub-tabs: **Resumen** / **El Vehiculo** / **Finanzas**
+- `switchDetailTab(tab)` — controla visibilidad de paneles y lazy-load del feed
+- Al cambiar de vehiculo, siempre se abre en "Resumen"
+
+**Smart Card:**
+- Tarjeta personal que muestra el saldo del usuario logueado
+- Estados: "Estas al dia" / "Te deben $X" / "Debes $X" con boton "Saldar"
+- Se oculta si el usuario no tiene mapping de piloto
+
+**Activity Feed (pestaña Finanzas):**
+- Combina payments (cargas y liquidaciones) con audit_logs (eliminaciones y deudas saldadas)
+- Paginado en chunks de 10 (ACTIVITY_PAGE_SIZE)
+- Lazy: se construye la primera vez que el usuario visita la pestaña Finanzas
+- Botones "Ver mas" / "Ver menos"
+
+**Audit Logs:**
+- Nueva tabla `audit_logs` con triggers automaticos en PostgreSQL
+- Registra: `trip_created`, `trip_deleted`, `payment_created`, `payment_deleted`, `debt_settled`
+- Fuente de datos para el Activity Feed en eventos de eliminacion
+
+### v18.6 — Saldar Deuda Modal
+
+- Nuevo modal "Saldar Deuda" accesible desde la Smart Card cuando el balance es negativo
+- Lista los acreedores del vehiculo (pilotos con balance positivo, distintos del usuario)
+- Pre-llena el monto con la deuda total del usuario
+- Al confirmar: inserta 2 ledger entries (contabilidad de doble entrada)
+  - Pagador: `{ type: 'transfer', amount: +monto }` — su deuda disminuye
+  - Acreedor: `{ type: 'transfer', amount: -monto }` — su credito disminuye
+- Boton "Ver menos" en Activity Feed (colapsa al primer ACTIVITY_PAGE_SIZE)
+
+### v18.7 — Actor List
+
+- Reemplaza la grilla rigida de tarjetas de resumen por un listado moderno `.actor-list`
+- Cada fila `.actor-row` contiene:
+  - Avatar circular con la inicial del piloto y color del PILOT_COLORS[]
+  - Nombre del piloto
+  - Barra horizontal proporcional al gasto (`.actor-bar-fill` con color del piloto)
+  - Stats: cantidad de viajes, km totales, porcentaje del gasto total
+  - Costo total en la derecha
+- Toggle de expandir/colapsar la seccion de balances desde un boton con flecha
+- Logica en `state.balancesExpanded` + `renderBalanceToggle()`
+
+### v18.8 — Chart.js Visualizaciones
+
+- **Doughnut** (`chart-km-donut`): KM por piloto del mes actual
+  - Excluye pilotos con 0 km este mes
+  - Ordena de menor a mayor km (sentido horario)
+  - Titulo dinamico con nombre del mes
+- **Mixed bar/line** (`chart-cost-bar`): Gasto y eficiencia de los ultimos 4 meses
+  - Barras: gasto total de combustible (eje Y izquierdo, violeta)
+  - Linea: $/km (eje Y derecho, cyan)
+  - Los ejes tienen callbacks de formato: `formatCurrency(v)` y `$v/km`
+- Ambos graficos se destruyen y recrean en cada `renderCharts()`
+- Solo se renderizan si `window.Chart` existe (Chart.js cargado via CDN)
+- Renombrado de tabs: "Historial" → "Finanzas"
+
+### v18.9 — Refinamiento de Graficos
+
+- Doughnut: filtro de pilotos con 0 km este mes + ordenamiento ascendente
+- Ranking de pilotos: calculo de eficiencia historica `SUM(km)/SUM(liters)` por piloto
+- Balances: ordenamiento de pilotos por saldo — mas deudores primero, mas acreedores ultimo
+- Carga de combustible: excluye transfers y settlements del calculo de cargas reales
+
+### v18.10 — Ordenamiento y Ranking
+
+- **Actor List**: ordena pilotos de mayor a menor gasto (`totals[b].cost - totals[a].cost`)
+  - Pilotos con costo 0 van al final
+  - Preserva el indice original en `vehicle.drivers[]` para mantener la asignacion de colores
+- **Mixed chart**: refactoring para calcular $/km solo con cargas reales (excluye settlements)
+
+### v18.14 — Claim Identity Contextual
+
+- **Modal "Claim Identity"** (`.modal-claim-identity`): se abre automaticamente al cargar un vehiculo si el usuario esta logueado pero no tiene mapping para ese vehiculo
+- Lista solo los pilotos sin usuario asociado (no reclamados)
+- Si todos los slots estan tomados, el modal no aparece (silencioso)
+- `openClaimIdentityModal(vehicle)` vs `showAvatarClaimModal(vehicleId, drivers)`:
+  - El primero es contextual (auto-popup al cambiar vehiculo)
+  - El segundo es el modal legacy post-join (se muestra al unirse por codigo)
+- `handleClaimIdentity()` inserta en `vehicle_driver_mappings`, re-fetchea mappings, cierra modal y activa Smart Card
 
 ---
 
@@ -187,16 +343,12 @@ Esta fase se enfoco en resolver problemas reales detectados en QA con iPhone 15.
 ### 1. Texto Vertical en Fechas (v15.3 → v15.4)
 
 **Problema:** En Safari iOS, las fechas se partian a mitad de caracter, mostrando texto apilado verticalmente.
-
 **Causa:** `word-break: break-word` en contenedores estrechos rompia dentro de palabras.
-
 **Solucion:** Cambiar a `overflow-wrap: break-word`, que solo rompe entre palabras.
 
-### 2. Scroll Reset entre Tabs (v15.3 → v15.4 → v15.5 → v15.6 → v15.7 → v15.8)
+### 2. Scroll Reset entre Tabs (v15.3 → v15.8)
 
 **Problema:** Al hacer swipe entre pestañas, el usuario llegaba al fondo de la nueva vista en vez del tope.
-
-**Iteraciones de solucion:**
 
 | Version | Enfoque | Resultado |
 |---------|---------|-----------|
@@ -204,61 +356,60 @@ Esta fase se enfoco en resolver problemas reales detectados en QA con iPhone 15.
 | v15.4 | `requestAnimationFrame` | Fallo: iOS no ejecuta rAF durante swipe |
 | v15.5 | `IntersectionObserver` con `threshold: 0.5` | Inconsistente en iOS con inercia |
 | v15.6 | `setTimeout(150)` + `scrollTop = 0` | Mejor, pero inercia de iOS a veces ganaba |
-| v15.7 | `setTimeout(150)` + `scrollTo({top:0, behavior:'instant'})` | **Solucion final** — `behavior: 'instant'` cancela la inercia |
+| v15.7 | `setTimeout(150)` + `scrollTo({top:0, behavior:'instant'})` | **Solucion final** |
 | v15.8 | Solo en mobile (reglas movidas a media query 768px) | Desktop usa scroll natural |
 
-**Solucion final:** `scrollTo({top: 0, behavior: 'instant'})` en `.view-content` con delay de 150ms post-transicion. En desktop, el scroll es natural del documento.
+**Solucion final:** `scrollTo({top: 0, behavior: 'instant'})` en `.view-content` con delay de 150ms post-transicion. `behavior: 'instant'` cancela la inercia de iOS. En desktop, el scroll es natural del documento.
 
 ### 3. Safari Ignora flex-basis: 100% (v15.5 → v15.6)
 
-**Problema:** `.payment-meta` con `flex-basis: 100%` no ocupaba toda la linea en Safari iOS, aplastando el texto verticalmente.
-
-**Intentos fallidos:**
-- `flex-basis: 100% !important` — Safari lo ignoraba
-- `min-width: 100%` — sin efecto
-
+**Problema:** `.payment-meta` con `flex-basis: 100%` no ocupaba toda la linea en Safari iOS.
+**Intentos fallidos:** `flex-basis: 100% !important`, `min-width: 100%` — Safari los ignoraba.
 **Solucion (v15.6):** Reemplazar Flexbox por CSS Grid:
 ```css
-.payment-item {
-  display: grid;
-  grid-template-columns: auto 1fr auto;
-}
-.payment-meta {
-  grid-column: 1 / -1;  /* Ocupa toda la fila */
-}
+.payment-item { display: grid; grid-template-columns: auto 1fr auto; }
+.payment-meta { grid-column: 1 / -1; }
 ```
-
-**Evolucion posterior (v15.7):** Reestructurar completamente a layout vertical con Header/Body/Footer, eliminando el problema de raiz.
+**Evolucion (v15.7):** Reestructurar a layout vertical Header/Body/Footer, eliminando el problema de raiz.
 
 ### 4. Scroll Independiente por Pestaña (v15.6 → v15.8)
 
 **Problema:** En iOS, al navegar entre tabs, la posicion de scroll se compartia entre vistas.
-
-**Solucion (v15.6):**
-```css
-.view { height: 100dvh; overflow: hidden; }
-.view-content { height: 100%; overflow-y: auto; -webkit-overflow-scrolling: touch; }
-```
-
-**Regresion en desktop (v15.8):** Estas reglas generaban scroll interno con barras visibles en pantallas grandes.
-
-**Solucion adaptativa (v15.8):** Mover las reglas a `@media (max-width: 768px)`. Desktop usa `height: auto; overflow: visible`.
+**Solucion mobile:** `height: 100dvh; overflow: hidden` en `.view` + `overflow-y: auto; -webkit-overflow-scrolling: touch` en `.view-content`.
+**Regresion desktop (v15.8):** Generaba scroll interno. Solución: mover reglas a `@media (max-width: 768px)`.
 
 ### 5. Cache No Se Actualiza en Produccion (v15.51)
 
-**Problema:** Despues de push a GitHub/Vercel, los cambios no aparecian en produccion por mas de 2 horas.
-
-**Causa:** El Service Worker con estrategia cache-first servia assets del cache viejo indefinidamente.
-
-**Solucion multi-capa:**
-1. Cache busting con query strings en `index.html` (`style.css?v=15.51`)
-2. Bump del `CACHE_NAME` en `sw.js` para forzar reinstalacion
-3. `skipWaiting()` + `clients.claim()` para activacion inmediata
-4. Console.log con version para verificar en produccion
+**Causa:** Service Worker cache-first servia assets del cache viejo indefinidamente post-deploy.
+**Solucion multi-capa:** Cache busting con query strings + bump del `CACHE_NAME` + `skipWaiting()` + `clients.claim()`.
 
 ---
 
-## Resumen de la Estructura Visual Actual (v15.8)
+## Estructura Visual Actual (v18.14)
+
+### Vista Detalle — Sub-tabs
+
+```
+┌──────────────────────────────────────────┐
+│ [Vehiculo Pills scrollable horizontal]   │
+├──────────────────────────────────────────┤
+│ [Nombre Vehiculo] [Modelo] [Consumo...]  │  ← Vehicle Info Card
+├──────────────────────────────────────────┤
+│ [Resumen] [El Vehiculo] [Finanzas]       │  ← Sub-tabs
+│ ─────────────────────────────────────── │
+│ TAB RESUMEN:                             │
+│   Smart Card (saldo personal)            │
+│   Tank Indicator (nivel + precio)        │
+│   Actor List (pilotos con barras)        │
+│   Graficos Chart.js (doughnut + mixto)  │
+│ TAB EL VEHICULO:                         │
+│   Info tecnica (consumos, capacidad)     │
+│   Historial de viajes con badges         │
+│ TAB FINANZAS:                            │
+│   Activity Feed paginado                 │
+│   Balances por piloto (expandibles)      │
+└──────────────────────────────────────────┘
+```
 
 ### Tarjeta de Pago (`.payment-item`)
 
@@ -281,23 +432,40 @@ Esta fase se enfoco en resolver problemas reales detectados en QA con iPhone 15.
 |                                                    |
 | [Fecha] [Saldado de deuda a: X]                   |  ← Body (pills)
 |                                                    |
-| [delete]                                           |  ← Sin footer, boton directo
+| [delete]                                           |  ← Boton directo
 +--------------------------------------------------+
+```
+
+### Actor Row (`.actor-row`)
+
+```
++--------------------------------------------------+
+| [P]   Piloto Name                      $XX,XXX.XX |
+|       [████████████████░░░░░░] 75%               |
+|       5 viajes · 850 km · 75%                    |
++--------------------------------------------------+
+```
+
+### Smart Card (`.smart-card`)
+
+```
+Estado neutral:  [ ✓ Estas al dia     $0           ]
+Estado positivo: [   Te deben plata   +$20,000     ] ← clase .clear (borde verde)
+Estado negativo: [   Debes plata      -$15,000     ] ← clase .debt (borde rojo)
+                                    [Btn: Saldar]
 ```
 
 ### Sistema de 3 Vistas
 
 ```
-[Vehiculos]         [Home]              [Dashboard]
+[Vehiculos/Detalle]  [Home]              [Dashboard]
 +-----------+   +-----------+       +-----------+
 | Pills     |   | Header    |       | Filter    |
-| Vehicle   |   | Registrar |       | Stats     |
-| Info Card |   | Agregar   |       | Monthly   |
-| Actions   |   | Vehicles  |       | Per-Car   |
-| Summary   |   | Grid      |       | Activity  |
-| Balances  |   |           |       | Ranking   |
-| Payments  |   |           |       | Price     |
-| Trips     |   |           |       | Trend     |
+| Info Card |   | Registrar |       | Stats     |
+| Sub-tabs  |   | Agregar   |       | Monthly   |
+|  Resumen  |   | Vehicles  |       | Per-Car   |
+|  Vehiculo |   | Grid      |       | Activity  |
+|  Finanzas |   |           |       | Ranking   |
 +-----------+   +-----------+       +-----------+
-  ← swipe →       DEFAULT             ← swipe →
+  ← swipe →       DEFAULT             swipe →
 ```

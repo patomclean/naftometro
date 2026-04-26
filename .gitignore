@@ -1,0 +1,12 @@
+﻿# Builds del toolkit (regenerables con repackage.sh)
+.claude/toolkit/dist/
+
+# Python cache
+**/_pycache_/
+*.pyc
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
