@@ -2,7 +2,7 @@
 
 ## Linea de Tiempo del Proyecto
 
-El proyecto se desarrolla desde el 12 de febrero de 2026, con 39+ commits. La version actual es v18.14. La evolucion se organiza en fases:
+El proyecto se desarrolla desde el 12 de febrero de 2026, con 40+ commits. La version actual es v18.15. La evolucion se organiza en fases:
 
 ---
 
@@ -336,6 +336,20 @@ La mayor refactorizacion arquitectural del proyecto: reemplazar el calculo de ba
   - El segundo es el modal legacy post-join (se muestra al unirse por codigo)
 - `handleClaimIdentity()` inserta en `vehicle_driver_mappings`, re-fetchea mappings, cierra modal y activa Smart Card
 
+### v18.15 — Hotfix: PPP corrupto y guardas defensivas del tanque
+
+**Contexto:** un viaje de 190km mostraba un costo irreal de $56,86 y el tanque marcaba 52/50 lts. Diagnostico con datos reales: el vehiculo tenia `current_ppp = 3` (deberia ser ~$2.461/l) y `virtual_liters = 80.091` (capacidad: 50). Campos derivados corruptos; datos de origen sanos.
+
+**Causa raiz** (rastreada via `audit_logs`): al borrar un viaje, `handleDeleteTrip()` no devolvia los litros al `virtual_liters`. Un viaje de 187km creado y borrado durante una carga masiva dejo el tanque virtual descuadrado, y la carga siguiente uso ese valor en el promedio ponderado del PPP, hundiendo el precio a ~$3.
+
+**Cambios de codigo:**
+- `handleDeleteTrip()`: restituye los litros del viaje al `virtual_liters` al borrar.
+- `clampTankLiters(vehicle, liters)`: helper nuevo, limita el tanque virtual a `[0, capacidad]`. Aplicado en los 3 writes de `virtual_liters`.
+- Promedio ponderado del PPP (`handlePaymentSubmit`): 3 guardas — clamp de `oldLiters`, saneo de `oldPPP` (si es < 10% del precio de carga), piso de `newPPP` (si es < 20% del precio de carga).
+- `calculateTankLevel()`: cap a la capacidad (arregla el "52/50" visual).
+
+Las guardas son inertes en operacion normal (validado con tests de logica aislada). La correccion de los datos corruptos se hizo por separado via SQL directo en Supabase.
+
 ---
 
 ## Problemas de iOS/Safari Resueltos
@@ -385,7 +399,7 @@ La mayor refactorizacion arquitectural del proyecto: reemplazar el calculo de ba
 
 ---
 
-## Estructura Visual Actual (v18.14)
+## Estructura Visual Actual (v18.15)
 
 ### Vista Detalle — Sub-tabs
 

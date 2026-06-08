@@ -2,6 +2,15 @@
 
 Formato: [SemVer](https://semver.org/lang/es/). Fecha: AAAA-MM-DD.
 
+## [1.1.0] — 2026-06-07
+
+### Added
+- Guardas defensivas del PPP (v18.15 de la app) en la sección de fórmulas:
+  clamp de `oldLiters`, saneo de `oldPPP`, piso de `newPPP`.
+- Nota sobre `clampTankLiters()` en los 3 writes de `virtual_liters`.
+- Advertencia: `handleDeleteTrip()` debe devolver los litros al borrar un viaje
+  (bug corregido en v18.15 que causaba corrupción del PPP).
+
 ## [1.0.0] — 2026-04-26
 
 ### Initial release

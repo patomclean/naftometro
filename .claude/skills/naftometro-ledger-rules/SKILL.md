@@ -2,7 +2,7 @@
 name: naftometro-ledger-rules
 description: Strict rules for the immutable ledger and the three financial flows in Naftometro (Reconciliación, Settlement, Identity Claim). Use this skill whenever the task involves the ledger table, modifying balances between drivers, the ledger types (trip_cost, fuel_payment, transfer, tank_audit_adjustment, opening_balance), the PPP (Precio Promedio Ponderado), tank audits, "saldar deuda" / settlement, doble entrada contable, or anything that mutates the financial state. Also load this when working on `performTankAudit()`, `handleSettleDebtSubmit()`, `handleClaimIdentity()`, or any function that calculates balances. The ledger is append-only by design — load this skill before suggesting any UPDATE or DELETE on the ledger to avoid violating an invariant the entire app depends on.
 metadata:
-  version: 1.0.0
+  version: 1.1.0
 ---
 
 # Naftometro — Reglas del Ledger y los 3 Flujos Financieros
@@ -116,6 +116,13 @@ nuevo_ppp = (litros_virtuales × ppp_actual + monto_pagado) /
 ```
 
 Esto se persiste en `vehicles.current_ppp`. Los siguientes `trip_cost` se calculan con este PPP.
+
+**Guardas defensivas (v18.15) — NO quitarlas.** `current_ppp` y `virtual_liters` son campos derivados sin historial; si se corrompen, el promedio se rompe (en v18.15 un `virtual_liters=80.091` hundio el PPP a $3, generando viajes de costo irreal). `handlePaymentSubmit()` aplica:
+1. **clamp de `oldLiters`** a `[0, capacidad]` via `clampTankLiters()` — un `virtual_liters` corrupto no domina el promedio.
+2. **saneo de `oldPPP`**: si es < 10% del precio de la carga, no se usa para el blend.
+3. **piso de `newPPP`**: si queda < 20% del precio de la carga, se usa el precio de la carga.
+
+Todos los writes de `virtual_liters` (crear/borrar viaje, registrar carga) pasan por `clampTankLiters()`. **Importante:** `handleDeleteTrip()` debe devolver los litros del viaje al tanque al borrar (bug corregido en v18.15) — si no, `virtual_liters` queda descuadrado.
 
 ### Costo de un viaje
 ```

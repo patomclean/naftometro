@@ -3,7 +3,7 @@
 ## Pre-deploy (en local, antes de hacer push)
 
 ### 1. Bumpear versión en 3 lugares
-La versión actual se sigue tipo semver light: `vMAJOR.MINOR` (ej: `v18.14`).
+La versión actual se sigue tipo semver light: `vMAJOR.MINOR` (ej: `v18.15`).
 
 - `app.js` — al inicio del archivo, suele haber un `console.log('Naftometro vX.Y')`. Actualizar.
 - `index.html` — buscar `?v=` en el archivo. Hay 2 ocurrencias:
@@ -65,6 +65,6 @@ Si los usuarios reportan que "no se actualiza":
 
 No es estricto, pero como guía:
 - **MAJOR** (v18 → v19): cambio de schema importante, refactor grande, feature nueva grande
-- **MINOR** (v18.13 → v18.14): bug fix, ajuste de UI, feature chica
+- **MINOR** (v18.14 → v18.15): bug fix, ajuste de UI, feature chica
 
 No se usa PATCH (tercer número) en este proyecto.

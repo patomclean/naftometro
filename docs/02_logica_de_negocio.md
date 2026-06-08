@@ -201,6 +201,16 @@ nuevo_ppp = $1,155.56/l
 Nuevo virtual_liters = 20 + 25 = 45
 ```
 
+### Guardas defensivas del PPP (v18.15)
+
+El promedio ponderado depende de `virtual_liters` y `current_ppp`, dos campos *derivados* que se persisten en `vehicles`. Si alguno se corrompe, el promedio se rompe (ver incidente v18.15: un `virtual_liters` de 80.091 hundio el PPP a ~$3). Por eso `handlePaymentSubmit()` aplica 3 guardas antes y despues de calcular el nuevo PPP:
+
+1. **Clamp de `oldLiters`** — los litros previos se limitan a `[0, capacidad]` con `clampTankLiters()`. Un `virtual_liters` corrupto ya no puede dominar el promedio.
+2. **Saneo de `oldPPP`** — si el PPP guardado es basura (menor al 10% del precio de la carga actual), no se usa para el blend; se asume que el combustible existente se compro a precio de mercado.
+3. **Piso de `newPPP`** — si el resultado queda por debajo del 20% del precio de la carga, se usa directamente el precio de la carga.
+
+Las 3 guardas son **inertes en operacion normal**: el promedio de dos precios realistas siempre cae entre ellos, lejos de los umbrales. Solo se activan ante valores imposibles.
+
 ---
 
 ## 3. Tanque Virtual
@@ -225,6 +235,17 @@ nivel = capacidad_tanque
 ```
 nivel = sum(todas_las_cargas.litros) - sum(todos_los_viajes.litros)
 ```
+
+**Cap a capacidad (v18.15):** el resultado se limita con `Math.min(nivel, capacidad_tanque)` — un tanque fisico no puede superar su capacidad. Esto corrige el sintoma visual "52/50 lts".
+
+### Mantenimiento de `virtual_liters` (v17+, guardas v18.15)
+
+Ademas del calculo on-the-fly de `calculateTankLevel()`, la app persiste `vehicles.virtual_liters` y lo actualiza incrementalmente:
+- **Registrar viaje** (`handleTripSubmit`): resta los litros consumidos.
+- **Registrar carga** (`handlePaymentSubmit`): suma los litros cargados (o resetea a capacidad si es tanque lleno).
+- **Borrar viaje** (`handleDeleteTrip`): **devuelve los litros del viaje al tanque** (corregido en v18.15 — antes no lo hacia, causando el descuadre raiz del incidente v18.15).
+
+Los 3 writes pasan por `clampTankLiters(vehicle, litros)`, que limita el valor a `[0, capacidad]`. Asi un valor corrupto no se puede persistir ni propagar al promedio ponderado del PPP.
 
 ### Capital del Tanque (v15.1)
 

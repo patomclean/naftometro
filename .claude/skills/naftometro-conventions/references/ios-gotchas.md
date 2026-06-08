@@ -31,7 +31,7 @@ Lista de problemas específicos de iOS/Safari ya resueltos en versiones anterior
 **Síntoma**: usuarios PWA seguían viendo la versión vieja días después del deploy.
 **Causa**: Service Worker cachea agresivo + Vercel CDN cachea estáticos.
 **Solución triple**:
-1. Query strings de versión en `index.html` (`style.css?v=18.14`)
+1. Query strings de versión en `index.html` (`style.css?v=18.15`)
 2. Bump `CACHE_NAME` en `sw.js` cada release
 3. `skipWaiting()` + `clients.claim()` en el SW
 4. Headers en `vercel.json` con `must-revalidate` para todos los assets, `no-cache, no-store` específicamente para `sw.js`
