@@ -52,7 +52,7 @@ Para detalle completo del state, ver `references/state-shape.md` cuando lo neces
 
 Container con `width: 300%` y `display: flex`, navegación por `translateX()`. Bottom nav con 3 tabs. La función `switchTab(tabName)` es el punto de entrada.
 
-Dentro de Detail hay 3 sub-tabs: **Resumen** (smart card + charts), **El Vehículo** (cargas + viajes), **Finanzas** (balances + activity feed). La función es `switchDetailTab(tab)`.
+Dentro de Detail hay 3 sub-tabs: **Resumen** (smart card + actor list + charts), **El Vehículo** (info técnica del vehículo + historial de viajes con badges), **Finanzas** (activity feed paginado + balances por piloto). La función es `switchDetailTab(tab)`.
 
 ## Los 3 flujos de negocio (CRÍTICO no confundir)
 

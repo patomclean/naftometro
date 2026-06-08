@@ -1,4 +1,4 @@
-console.log("🚀 Naftómetro v18.14 cargado correctamente");
+console.log("🚀 Naftómetro v18.15 cargado correctamente");
 
 // ============================================================
 // 1. CONSTANTS & CONFIGURATION
@@ -27,6 +27,16 @@ const VEHICLE_DATABASE = {
 function getVehicleTankCapacity(vehicle) {
   const spec = VEHICLE_DATABASE[vehicle.model];
   return spec ? spec.tank : null;
+}
+
+// v18.15: Guarda defensiva — el tanque virtual nunca puede ser negativo ni
+// superar la capacidad fisica. Evita que un valor corrupto envenene calculos
+// posteriores (ej: el promedio ponderado del PPP).
+function clampTankLiters(vehicle, liters) {
+  const cap = vehicle ? getVehicleTankCapacity(vehicle) : null;
+  let v = Math.max(0, Number(liters) || 0);
+  if (cap) v = Math.min(v, cap);
+  return +v.toFixed(2);
 }
 
 function getConsumptionForDriveType(vehicle, driveType) {
@@ -428,7 +438,8 @@ function calculateTankLevel() {
       }
     });
 
-    return +level.toFixed(2);
+    // v18.15: un tanque fisico no puede superar su capacidad (evita el "52/50")
+    return +Math.min(level, tankCap).toFixed(2);
   }
 
   // Fallback: total sum (no full tank reference point)
@@ -3063,18 +3074,32 @@ async function handlePaymentSubmit(e) {
       if (litersLoaded && litersLoaded > 0) {
         const vehicle = getActiveVehicle();
         if (vehicle) {
-          const oldPPP = vehicle.current_ppp > 0 ? vehicle.current_ppp : getLatestFuelPrice(vehicle);
-          const oldLiters = Math.max(vehicle.virtual_liters || 0, 0);
+          let oldPPP = vehicle.current_ppp > 0 ? vehicle.current_ppp : getLatestFuelPrice(vehicle);
+          // v18.15: clamp oldLiters a la capacidad real. Un virtual_liters corrupto
+          // (ej: 80.091) no debe dominar el promedio ponderado y hundir el PPP.
+          const oldLiters = clampTankLiters(vehicle, vehicle.virtual_liters || 0);
           const newTotalLiters = oldLiters + litersLoaded;
+          const loadPrice = effectivePrice || pricePerLiter || null;
+          // v18.15: si el PPP guardado es basura (implausiblemente bajo vs el precio
+          // de esta carga, ej: $2 vs $2461), no contaminar el blend con el — el
+          // combustible existente casi seguro se compro a precio de mercado.
+          if (loadPrice && oldPPP > 0 && oldPPP < loadPrice * 0.1) {
+            oldPPP = loadPrice;
+          }
           let newPPP;
           if (newTotalLiters <= 0) {
-            newPPP = effectivePrice || pricePerLiter || vehicle.fuel_price;
+            newPPP = loadPrice || vehicle.fuel_price;
           } else {
             newPPP = +((oldLiters * oldPPP + amount) / newTotalLiters).toFixed(2);
           }
+          // v18.15: piso de sanidad. Si el PPP calculado quedo absurdamente bajo
+          // respecto al precio de esta carga, hubo corrupcion: usar el precio de carga.
+          if (loadPrice && newPPP < loadPrice * 0.2) {
+            newPPP = +Number(loadPrice).toFixed(2);
+          }
           const updates = {
             current_ppp: newPPP,
-            virtual_liters: +newTotalLiters.toFixed(2),
+            virtual_liters: clampTankLiters(vehicle, newTotalLiters),
             fuel_price: newPPP // mantener compatibilidad
           };
           if (isFullTank) {
@@ -3441,8 +3466,8 @@ async function handleTripSubmit(e) {
         ref_id: createdTrip.id,
         description: `Viaje ${km} km (${driveType})`
       });
-      // v17: Decrease virtual liters
-      const newVL = +((vehicle.virtual_liters || 0) - liters).toFixed(2);
+      // v17: Decrease virtual liters (v18.15: clamp a [0, capacidad])
+      const newVL = clampTankLiters(vehicle, (vehicle.virtual_liters || 0) - liters);
       await updateVehicle(state.activeVehicleId, { virtual_liters: newVL });
       vehicle.virtual_liters = newVL;
       showToast('Viaje registrado');
@@ -3468,9 +3493,25 @@ async function handleTripSubmit(e) {
 
 async function handleDeleteTrip(tripId) {
   try {
+    // v18.15: Capturar el viaje antes de borrarlo para devolver sus litros al
+    // tanque virtual (al crear el viaje se restaron en handleTripSubmit).
+    // Sin esto, borrar un viaje deja virtual_liters descuadrado.
+    const deletedTrip = state.trips.find(t => t.id === tripId);
+    const vehicleBeforeDelete = getActiveVehicle();
+
     await deleteTrip(tripId);
     showToast('Viaje eliminado');
     haptic();
+
+    // Restituir los litros consumidos al tanque virtual
+    if (deletedTrip && vehicleBeforeDelete && Number(deletedTrip.liters) > 0) {
+      const restoredVL = clampTankLiters(
+        vehicleBeforeDelete,
+        (vehicleBeforeDelete.virtual_liters || 0) + Number(deletedTrip.liters)
+      );
+      await updateVehicle(state.activeVehicleId, { virtual_liters: restoredVL });
+    }
+
     // v18.4: Full state reload — cascade trigger deletes ledger rows,
     // so we must re-fetch ledger + vehicles to reflect correct balances
     const [trips, ledger, vehicles] = await Promise.all([

@@ -67,5 +67,7 @@ const state = {
 
 Estas cosas viven en `localStorage` (no en `state`):
 
-- `welcome_seen` — flag de onboarding educativo (se muestra 1 vez)
-- Cualquier preferencia de UI persistente
+| Clave | Valor | Propósito |
+|---|---|---|
+| `naftometro_welcome_seen` | `'true'` | Flag de onboarding educativo — modal solo se muestra 1 vez por dispositivo |
+| `naftometro_pending_invite_code` | código 6 chars | Puente OAuth: guarda el invite code antes del redirect de auth para consumirlo post-login via `processPendingInvite()` |

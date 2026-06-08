@@ -110,7 +110,7 @@ Barra fija (`position: fixed`) fuera del container de vistas. Tres tabs: Vehicul
 
 ### Sistema de Modales
 
-La app tiene 10 modales:
+La app tiene 12 modales:
 
 | Modal | ID / Funcion | Version |
 |-------|-------------|---------|
