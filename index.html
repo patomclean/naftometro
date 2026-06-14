@@ -13,7 +13,7 @@
   <link rel="manifest" href="manifest.json">
   <link rel="apple-touch-icon" href="icons/icon-192.svg">
   <link rel="icon" type="image/svg+xml" href="icons/icon-192.svg">
-  <link rel="stylesheet" href="style.css?v=18.15">
+  <link rel="stylesheet" href="style.css?v=18.16">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 </head>
@@ -410,7 +410,7 @@
   <div id="payment-modal" class="modal-overlay hidden">
     <div class="modal glass-card modal-sm">
       <div class="modal-header">
-        <h3 id="payment-modal-title">Cargar combustible</h3>
+        <h3 id="payment-modal-title">Cargar Nafta</h3>
         <button id="btn-close-payment-modal" class="btn-icon">&times;</button>
       </div>
       <form id="payment-form">
@@ -420,14 +420,18 @@
             <option value="">Seleccionar...</option>
           </select>
         </div>
-        <div class="form-group">
-          <label for="payment-amount">Monto total ($)</label>
-          <input type="number" id="payment-amount" min="1" step="0.01" required placeholder="Ej: 15000">
+        <!-- v18.16: Hero amount -->
+        <div class="cn-hero">
+          <label for="payment-amount" class="cn-hero-label">Monto que pagaste</label>
+          <div class="cn-hero-wrap">
+            <span class="cn-hero-cur">$</span>
+            <input type="number" id="payment-amount" min="1" step="0.01" required placeholder="0" class="cn-hero-input">
+          </div>
         </div>
         <div class="quick-amounts settlement-hide">
-          <button type="button" class="quick-amount-btn" data-amount="10000">+$10k</button>
-          <button type="button" class="quick-amount-btn" data-amount="20000">+$20k</button>
-          <button type="button" class="quick-amount-btn" data-amount="50000">+$50k</button>
+          <button type="button" class="quick-amount-btn" data-amount="10000">+$10.000</button>
+          <button type="button" class="quick-amount-btn" data-amount="20000">+$20.000</button>
+          <button type="button" class="quick-amount-btn" data-amount="50000">+$50.000</button>
         </div>
         <div class="form-row settlement-hide">
           <div class="form-group">
@@ -439,9 +443,27 @@
             <input type="number" id="payment-price-per-liter" min="1" step="1" placeholder="Ej: 1350">
           </div>
         </div>
-        <!-- v14.8: Ajustes de Precio (native accordion) -->
+        <!-- v18.16: Tanque lleno toggle -->
+        <label class="cn-toggle settlement-hide">
+          <span class="cn-toggle-txt"><strong>&#128267; Tanque lleno</strong><small>Ayuda a ajustar las cuentas del ciclo</small></span>
+          <input type="checkbox" id="payment-full-tank" class="cn-toggle-input">
+          <span class="cn-toggle-track"><span class="cn-toggle-dot"></span></span>
+        </label>
+        <!-- v18.16: Fecha (Hoy / cambiar) -->
+        <div class="cn-date">
+          <span class="cn-date-disp">&#128340; <b id="payment-date-display">Hoy</b></span>
+          <button type="button" id="btn-change-date" class="cn-link">cambiar</button>
+          <div id="payment-date-field" class="cn-date-field hidden">
+            <input type="datetime-local" id="payment-occurred-at">
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="payment-note">Nota (opcional)</label>
+          <input type="text" id="payment-note" maxlength="100" placeholder="Ej: YPF de Av. Libertador">
+        </div>
+        <!-- v18.16: Mas opciones (comprobante + foto) -->
         <details class="price-adjustments-accordion settlement-hide" id="adjustments-details">
-          <summary class="adjustments-summary">Ajustes de Precio</summary>
+          <summary class="adjustments-summary">&#9881;&#65039; Mas opciones</summary>
           <div class="adjustments-panel" id="adjustments-panel">
             <div class="form-group form-group-checkbox">
               <label class="checkbox-label">
@@ -464,51 +486,37 @@
               <label for="payment-discount">Descuento/Reintegro incluido ($)</label>
               <input type="number" id="payment-discount" min="0" step="0.01" placeholder="Ej: 500">
             </div>
+            <!-- v10: Dynamic Price Summary -->
+            <div id="payment-price-summary" class="payment-price-summary hidden">
+              <div class="summary-line">
+                <span>Pagaste:</span>
+                <strong id="summary-paid"></strong>
+              </div>
+              <div class="summary-line">
+                <span>Precio Surtidor:</span>
+                <strong id="summary-pump-price"></strong>
+              </div>
+              <div class="summary-line summary-line-highlight">
+                <span>Precio Efectivo:</span>
+                <strong id="summary-effective-price"></strong>
+              </div>
+              <div id="summary-perception-note" class="summary-note hidden"></div>
+            </div>
+            <!-- v15: Photo Evidence -->
+            <div class="form-group" id="photo-capture-group">
+              <label>Foto del ticket</label>
+              <input type="file" id="payment-photo-input" accept="image/*" capture="camera" class="hidden">
+              <div id="photo-preview" class="photo-preview hidden">
+                <img id="photo-preview-img" alt="Ticket preview">
+                <button type="button" id="btn-remove-photo" class="btn-icon btn-icon-danger photo-remove-btn">&times;</button>
+              </div>
+              <button type="button" id="btn-capture-photo" class="btn-capture-photo">&#128247; Adjuntar Ticket</button>
+            </div>
           </div>
         </details>
-        <!-- v10: Dynamic Price Summary -->
-        <div id="payment-price-summary" class="payment-price-summary settlement-hide hidden">
-          <div class="summary-line">
-            <span>Pagaste:</span>
-            <strong id="summary-paid"></strong>
-          </div>
-          <div class="summary-line">
-            <span>Precio Surtidor:</span>
-            <strong id="summary-pump-price"></strong>
-          </div>
-          <div class="summary-line summary-line-highlight">
-            <span>Precio Efectivo:</span>
-            <strong id="summary-effective-price"></strong>
-          </div>
-          <div id="summary-perception-note" class="summary-note hidden"></div>
-        </div>
-        <div class="form-group form-group-checkbox settlement-hide">
-          <label class="checkbox-label">
-            <input type="checkbox" id="payment-full-tank">
-            <span class="checkbox-custom"></span>
-            Tanque lleno
-          </label>
-        </div>
-        <div class="form-group">
-          <label for="payment-occurred-at">Fecha y hora</label>
-          <input type="datetime-local" id="payment-occurred-at">
-        </div>
-        <div class="form-group">
-          <label for="payment-note">Nota (opcional)</label>
-          <input type="text" id="payment-note" maxlength="100" placeholder="Ej: YPF de Av. Libertador">
-        </div>
-        <!-- v15: Photo Evidence -->
-        <div class="form-group settlement-hide" id="photo-capture-group">
-          <label>Foto del ticket</label>
-          <input type="file" id="payment-photo-input" accept="image/*" capture="camera" class="hidden">
-          <div id="photo-preview" class="photo-preview hidden">
-            <img id="photo-preview-img" alt="Ticket preview">
-            <button type="button" id="btn-remove-photo" class="btn-icon btn-icon-danger photo-remove-btn">&times;</button>
-          </div>
-          <button type="button" id="btn-capture-photo" class="btn-capture-photo">&#128247; Adjuntar Ticket</button>
-        </div>
-        <button type="submit" id="btn-submit-payment" class="btn btn-primary btn-block">
+        <button type="submit" id="btn-submit-payment" class="btn btn-primary btn-block cn-cta">
           <span class="btn-text">Registrar carga</span>
+          <span id="payment-cta-amount" class="cn-cta-amount"></span>
           <span class="btn-loader hidden"></span>
         </button>
       </form>
@@ -745,6 +753,6 @@
   <!-- Toast Container -->
   <div id="toast-container" class="toast-container"></div>
 
-  <script src="app.js?v=18.15"></script>
+  <script src="app.js?v=18.16"></script>
 </body>
 </html>

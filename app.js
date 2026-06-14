@@ -1,4 +1,4 @@
-console.log("🚀 Naftómetro v18.15 cargado correctamente");
+console.log("🚀 Naftómetro v18.16 cargado correctamente");
 
 // ============================================================
 // 1. CONSTANTS & CONFIGURATION
@@ -194,6 +194,11 @@ const dom = {
   paymentFullTank: $('#payment-full-tank'),
   paymentNote: $('#payment-note'),
   btnSubmitPayment: $('#btn-submit-payment'),
+  // v18.16: Express UX refs
+  paymentDateDisplay: $('#payment-date-display'),
+  btnChangeDate: $('#btn-change-date'),
+  paymentDateField: $('#payment-date-field'),
+  paymentCtaAmount: $('#payment-cta-amount'),
   // v10: Fiscal audit DOM refs
   adjustmentsDetails: $('#adjustments-details'),
   adjustmentsPanel: $('#adjustments-panel'),
@@ -2757,6 +2762,13 @@ function handleClearPilotAccount(driver) {
   const creditorDriver = findMainCreditor(driver, vehicle.drivers || []);
   dom.paymentNote.value = `Saldado de deuda a: ${creditorDriver || ''}`;
 
+  // v18.16: fecha + monto en CTA tambien en modo saldado
+  dom.paymentOccurredAt.value = toLocalDatetimeValue();
+  toggleHidden(dom.paymentDateField, true);
+  if (dom.btnChangeDate) toggleHidden(dom.btnChangeDate, false);
+  renderPaymentDateDisplay();
+  updatePaymentCtaAmount();
+
   // Ocultar campos de combustible
   document.querySelectorAll('.settlement-hide').forEach(el => el.classList.add('hidden'));
 
@@ -2768,6 +2780,27 @@ function handleClearPilotAccount(driver) {
 }
 
 // --- Payment Modal ---
+
+// v18.16: Express UX helpers — fecha amigable + monto en el CTA
+function renderPaymentDateDisplay() {
+  if (!dom.paymentDateDisplay) return;
+  const val = dom.paymentOccurredAt.value;
+  if (!val) { dom.paymentDateDisplay.textContent = 'Hoy'; return; }
+  const d = new Date(val);
+  if (isNaN(d.getTime())) { dom.paymentDateDisplay.textContent = 'Hoy'; return; }
+  const now = new Date();
+  const yest = new Date(now); yest.setDate(now.getDate() - 1);
+  const hh = d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+  if (d.toDateString() === now.toDateString()) dom.paymentDateDisplay.textContent = `Hoy, ${hh}`;
+  else if (d.toDateString() === yest.toDateString()) dom.paymentDateDisplay.textContent = `Ayer, ${hh}`;
+  else dom.paymentDateDisplay.textContent = `${d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' })}, ${hh}`;
+}
+
+function updatePaymentCtaAmount() {
+  if (!dom.paymentCtaAmount) return;
+  const amt = parseFloat(dom.paymentAmount.value);
+  dom.paymentCtaAmount.textContent = (amt > 0) ? `· ${formatCurrency(amt)}` : '';
+}
 
 function openPaymentModal(editId) {
   // v15.5: Close any open popups
@@ -2829,6 +2862,9 @@ function openPaymentModal(editId) {
     dom.paymentDiscount.value = p.discount_amount || '';
     if (p.invoice_type === 'Factura A') {
       toggleHidden(dom.facturaADetail, false);
+    }
+    // v18.16: abrir "Mas opciones" si hay datos avanzados (factura, descuento o foto)
+    if (p.invoice_type === 'Factura A' || (p.discount_amount > 0) || p.photo_url) {
       dom.adjustmentsDetails.open = true;
     }
     // v15: Show existing photo in edit mode
@@ -2844,13 +2880,19 @@ function openPaymentModal(editId) {
   } else {
     const btnText = dom.btnSubmitPayment.querySelector('.btn-text');
     if (btnText) btnText.textContent = 'Registrar carga';
-    $('#payment-modal-title').textContent = 'Cargar combustible';
+    $('#payment-modal-title').textContent = 'Cargar Nafta';
     // v14.6: Default occurred_at to now
     dom.paymentOccurredAt.value = toLocalDatetimeValue();
     // v18: Auto-select logged-in user's driver
     const myDriver = getMyDriverName(vehicle.id);
     if (myDriver) dom.paymentDriver.value = myDriver;
   }
+
+  // v18.16: Express UX — colapsar fecha, render display + monto en CTA
+  toggleHidden(dom.paymentDateField, true);
+  if (dom.btnChangeDate) toggleHidden(dom.btnChangeDate, false);
+  renderPaymentDateDisplay();
+  updatePaymentCtaAmount();
 
   toggleHidden(dom.paymentModal, false);
 }
@@ -3889,6 +3931,7 @@ function bindEvents() {
       dom.paymentPricePerLiter.value = Math.round(amount / liters);
     }
     updatePaymentPriceSummary();
+    updatePaymentCtaAmount(); // v18.16
   });
 
   // Quick amount buttons
@@ -3909,6 +3952,16 @@ function bindEvents() {
 
   // v10: Discount input
   dom.paymentDiscount.addEventListener('input', updatePaymentPriceSummary);
+
+  // v18.16: Fecha "cambiar" — revela el datetime, y sincroniza el display
+  if (dom.btnChangeDate) {
+    dom.btnChangeDate.addEventListener('click', () => {
+      toggleHidden(dom.paymentDateField, false);
+      toggleHidden(dom.btnChangeDate, true);
+      dom.paymentOccurredAt.focus();
+    });
+  }
+  dom.paymentOccurredAt.addEventListener('change', renderPaymentDateDisplay);
 
   // Trip form
   dom.tripForm.addEventListener('submit', handleTripSubmit);

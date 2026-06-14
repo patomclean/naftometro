@@ -2632,3 +2632,104 @@ input[type="datetime-local"] {
   min-height: 32px;
 }
 .btn-logout-corner:active { background: rgba(255,255,255,0.14); color: var(--text-primary); }
+
+/* =========================================================
+   v18.16 — Cargar Nafta "Express" UX
+   ========================================================= */
+/* Hero amount */
+.cn-hero {
+  background: rgba(124, 92, 252, 0.08);
+  border: 1px solid rgba(124, 92, 252, 0.25);
+  border-radius: var(--radius-lg);
+  padding: 14px 16px;
+  text-align: center;
+  margin-bottom: 0.75rem;
+}
+.cn-hero-label {
+  display: block;
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 4px;
+}
+.cn-hero-wrap { display: flex; align-items: center; justify-content: center; gap: 4px; }
+.cn-hero-cur { color: var(--text-muted); font-size: 1.5rem; font-weight: 700; }
+.cn-hero-input {
+  background: transparent !important;
+  border: none !important;
+  color: var(--text-primary);
+  font-size: 2.1rem !important;
+  font-weight: 800;
+  text-align: center;
+  padding: 2px 0 !important;
+  width: 100%;
+  max-width: 220px;
+  letter-spacing: -0.02em;
+}
+.cn-hero-input:focus { outline: none; box-shadow: none !important; }
+/* hide number spinners on hero */
+.cn-hero-input::-webkit-outer-spin-button,
+.cn-hero-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.cn-hero-input { -moz-appearance: textfield; }
+
+/* Quick amount chips (full-width row) */
+.quick-amounts { display: flex; gap: 7px; margin-bottom: 0.85rem; }
+.quick-amount-btn {
+  flex: 1;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--glass-border);
+  border-radius: 10px;
+  padding: 9px 4px;
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--transition);
+}
+.quick-amount-btn:active { background: var(--color-primary); border-color: var(--color-primary); color: #fff; }
+
+/* Tanque lleno toggle */
+.cn-toggle {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  background: rgba(34, 197, 94, 0.10);
+  border: 1px solid rgba(34, 197, 94, 0.32);
+  border-radius: var(--radius-md);
+  padding: 11px 13px;
+  margin-bottom: 0.85rem;
+  cursor: pointer;
+}
+.cn-toggle-txt { display: flex; flex-direction: column; }
+.cn-toggle-txt strong { font-size: 0.92rem; }
+.cn-toggle-txt small { font-size: 0.7rem; color: var(--text-secondary); }
+.cn-toggle-input { position: absolute; opacity: 0; pointer-events: none; }
+.cn-toggle-track {
+  width: 46px; height: 26px; border-radius: 20px;
+  background: rgba(255, 255, 255, 0.15);
+  position: relative; flex-shrink: 0; transition: background var(--transition);
+}
+.cn-toggle-dot {
+  position: absolute; width: 20px; height: 20px; border-radius: 50%;
+  background: #fff; top: 3px; left: 3px; transition: left var(--transition);
+}
+.cn-toggle-input:checked ~ .cn-toggle-track { background: var(--color-success); }
+.cn-toggle-input:checked ~ .cn-toggle-track .cn-toggle-dot { left: 23px; }
+
+/* Fecha (Hoy / cambiar) */
+.cn-date {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 0.84rem; color: var(--text-secondary);
+  margin-bottom: 0.85rem; flex-wrap: wrap;
+}
+.cn-date-disp b { color: var(--text-primary); }
+.cn-link {
+  background: none; border: none; color: var(--color-primary);
+  font-size: 0.8rem; cursor: pointer; padding: 2px 4px; margin-left: auto;
+}
+.cn-date-field { flex-basis: 100%; }
+
+/* Mas opciones summary */
+.adjustments-summary { font-weight: 600; }
+
+/* Sticky CTA with amount */
+.cn-cta { position: sticky; bottom: 0; z-index: 2; }
+.cn-cta-amount { opacity: 0.75; font-weight: 600; margin-left: 6px; }
