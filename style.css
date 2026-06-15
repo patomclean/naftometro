@@ -2730,8 +2730,7 @@ input[type="datetime-local"] {
 /* Mas opciones summary */
 .adjustments-summary { font-weight: 600; }
 
-/* Sticky CTA with amount */
-.cn-cta { position: sticky; bottom: 0; z-index: 2; }
+/* CTA with amount (v18.18: sin sticky — se superponia con "Mas opciones") */
 .cn-cta-amount { opacity: 0.75; font-weight: 600; margin-left: 6px; }
 
 /* =========================================================

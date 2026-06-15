@@ -1,4 +1,4 @@
-console.log("🚀 Naftómetro v18.17 cargado correctamente");
+console.log("🚀 Naftómetro v18.18 cargado correctamente");
 
 // ============================================================
 // 1. CONSTANTS & CONFIGURATION
