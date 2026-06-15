@@ -1,4 +1,4 @@
-console.log("🚀 Naftómetro v18.16 cargado correctamente");
+console.log("🚀 Naftómetro v18.17 cargado correctamente");
 
 // ============================================================
 // 1. CONSTANTS & CONFIGURATION
@@ -199,6 +199,11 @@ const dom = {
   btnChangeDate: $('#btn-change-date'),
   paymentDateField: $('#payment-date-field'),
   paymentCtaAmount: $('#payment-cta-amount'),
+  // v18.17: Comprobante refs
+  invoiceTypeSeg: $('#invoice-type-seg'),
+  discountUnit: $('#discount-unit'),
+  cnSumLines: $('#cn-sum-lines'),
+  cnSumHeroSub: $('#cn-sum-hero-sub'),
   // v10: Fiscal audit DOM refs
   adjustmentsDetails: $('#adjustments-details'),
   adjustmentsPanel: $('#adjustments-panel'),
@@ -390,8 +395,10 @@ function calculateFiscalBreakdown(amount, liters, isFacturaA, discount) {
   };
 
   // Safe division: PE solo si litros > 0
+  // v18.17: el descuento/reintegro baja el precio efectivo (costo real)
+  const netAmount = amount - (discount || 0);
   if (liters > 0) {
-    result.effectivePrice = amount / liters;
+    result.effectivePrice = netAmount / liters;
   }
 
   if (isFacturaA && amount > 0) {
@@ -467,36 +474,75 @@ function calculateWeightedPrice(tankLiters, currentPrice, newAmount, newLiters) 
   return +((effectiveTank * currentPrice + newAmount) / totalLiters).toFixed(2);
 }
 
-// v10: Update the dynamic price summary in payment modal
+// v18.17: descuento en $ a partir del valor + unidad ($ o %)
+function getDiscountAmount(amount) {
+  const raw = parseFloat(dom.paymentDiscount.value) || 0;
+  if (raw <= 0) return 0;
+  const unitBtn = dom.discountUnit ? dom.discountUnit.querySelector('.cn-unit-on') : null;
+  const unit = unitBtn ? unitBtn.dataset.unit : '$';
+  if (unit === '%') return +(((amount || 0) * raw) / 100).toFixed(2);
+  return raw;
+}
+
+// v18.17: sincroniza el estado visual del segmentado y la unidad
+function setInvoiceTypeUI(isFacturaA) {
+  if (!dom.invoiceTypeSeg) return;
+  dom.invoiceTypeSeg.querySelectorAll('.cn-seg-btn').forEach(b => {
+    b.classList.toggle('cn-seg-on', (b.dataset.invoice === 'factura') === !!isFacturaA);
+  });
+}
+function setDiscountUnitUI(unit) {
+  if (!dom.discountUnit) return;
+  dom.discountUnit.querySelectorAll('.cn-unit-btn').forEach(b => {
+    b.classList.toggle('cn-unit-on', b.dataset.unit === unit);
+  });
+}
+
+// v10/v18.17: Update the dynamic price summary (layout del mock aprobado)
 function updatePaymentPriceSummary() {
   const amount = parseFloat(dom.paymentAmount.value);
   const liters = parseFloat(dom.paymentLiters.value);
   const isFacturaA = dom.paymentFacturaA.checked;
-  const discount = parseFloat(dom.paymentDiscount.value) || 0;
 
   if (!amount || amount <= 0 || !liters || liters <= 0) {
     toggleHidden(dom.paymentPriceSummary, true);
     return;
   }
 
+  const discount = getDiscountAmount(amount);
   const breakdown = calculateFiscalBreakdown(amount, liters, isFacturaA, discount);
 
-  dom.summaryPaid.textContent = formatCurrency(amount);
-  dom.summaryPumpPrice.textContent = breakdown.pumpPrice
-    ? formatCurrency(breakdown.pumpPrice) + '/l'
-    : '-';
-  dom.summaryEffectivePrice.textContent = breakdown.effectivePrice
-    ? formatCurrency(breakdown.effectivePrice) + '/l'
-    : '-';
-
-  if (isFacturaA && breakdown.taxPerceptions > 0) {
-    dom.summaryPerceptionNote.textContent =
-      `Tu precio es mayor debido a ${formatCurrency(breakdown.taxPerceptions)} en percepciones impositivas`;
-    toggleHidden(dom.summaryPerceptionNote, false);
+  // Lineas del resumen segun comprobante / descuento
+  const lines = [];
+  if (isFacturaA) {
+    lines.push(['Precio surtidor', formatCurrency(breakdown.pumpPrice) + '/l', '']);
+    lines.push(['+ Percepciones (Fac. A)', '+' + formatCurrency(breakdown.taxPerceptions), 'cn-add']);
+    lines.push(['Pagaste (total)', formatCurrency(amount), '']);
   } else {
-    toggleHidden(dom.summaryPerceptionNote, true);
+    lines.push(['Pagaste', formatCurrency(amount), '']);
+    lines.push(['Litros', (+liters) + ' L', '']);
+  }
+  if (discount > 0) {
+    lines.push(['− Descuento', '−' + formatCurrency(discount), 'cn-sub']);
+    lines.push(['Costo real', formatCurrency(amount - discount), '']);
+  }
+  if (dom.cnSumLines) {
+    dom.cnSumLines.innerHTML = lines
+      .map(([k, v, cls]) => `<div class="cn-sum-r ${cls}"><span>${k}</span><b>${v}</b></div>`)
+      .join('');
   }
 
+  dom.summaryEffectivePrice.textContent = breakdown.effectivePrice
+    ? formatCurrency(breakdown.effectivePrice) + '/l'
+    : '$0/l';
+
+  if (dom.cnSumHeroSub) {
+    dom.cnSumHeroSub.textContent = isFacturaA
+      ? 'incluye percepciones'
+      : (discount > 0 ? 'ya con el descuento' : 'el que va al pool');
+  }
+
+  toggleHidden(dom.summaryPerceptionNote, true);
   toggleHidden(dom.paymentPriceSummary, false);
 }
 
@@ -2831,6 +2877,9 @@ function openPaymentModal(editId) {
   toggleHidden(dom.facturaADetail, true);
   dom.adjustmentsDetails.open = false;
   toggleHidden(dom.paymentPriceSummary, true);
+  // v18.17: reset comprobante UI (Ticket + unidad $)
+  setInvoiceTypeUI(false);
+  setDiscountUnitUI('$');
 
   // v15: Reset photo state
   state.pendingPhotoFile = null;
@@ -2860,6 +2909,8 @@ function openPaymentModal(editId) {
     // Fiscal fields
     dom.paymentFacturaA.checked = p.invoice_type === 'Factura A';
     dom.paymentDiscount.value = p.discount_amount || '';
+    setInvoiceTypeUI(p.invoice_type === 'Factura A'); // v18.17
+    setDiscountUnitUI('$'); // el descuento se guarda en $
     if (p.invoice_type === 'Factura A') {
       toggleHidden(dom.facturaADetail, false);
     }
@@ -3012,7 +3063,7 @@ async function handlePaymentSubmit(e) {
   try {
     // v10: Compute fiscal breakdown
     const isFacturaA = isSettlement ? false : dom.paymentFacturaA.checked;
-    const discountAmount = isSettlement ? 0 : (parseFloat(dom.paymentDiscount.value) || 0);
+    const discountAmount = isSettlement ? 0 : getDiscountAmount(amount); // v18.17: respeta unidad $/%
     const invoiceType = isFacturaA ? 'Factura A' : 'Ticket';
 
     let fiscalPerceptions = 0;
@@ -3088,10 +3139,10 @@ async function handlePaymentSubmit(e) {
         }
         showToast(`Saldo de ${formatCurrency(amount)} registrado para ${driver}`);
       } else {
-        // Fuel payment = credit
+        // Fuel payment = credit (v18.17: neto del descuento/reintegro)
         await insertLedgerEntry({
           vehicle_id: state.activeVehicleId, driver,
-          type: 'fuel_payment', amount: +amount,
+          type: 'fuel_payment', amount: +(amount - discountAmount),
           ref_id: createdPayment.id,
           description: litersLoaded ? `Carga ${litersLoaded} lts` : `Pago combustible`
         });
@@ -3132,7 +3183,8 @@ async function handlePaymentSubmit(e) {
           if (newTotalLiters <= 0) {
             newPPP = loadPrice || vehicle.fuel_price;
           } else {
-            newPPP = +((oldLiters * oldPPP + amount) / newTotalLiters).toFixed(2);
+            // v18.17: el descuento/reintegro baja el costo que entra al promedio
+            newPPP = +((oldLiters * oldPPP + (amount - discountAmount)) / newTotalLiters).toFixed(2);
           }
           // v18.15: piso de sanidad. Si el PPP calculado quedo absurdamente bajo
           // respecto al precio de esta carga, hubo corrupcion: usar el precio de carga.
@@ -3952,6 +4004,29 @@ function bindEvents() {
 
   // v10: Discount input
   dom.paymentDiscount.addEventListener('input', updatePaymentPriceSummary);
+
+  // v18.17: Segmentado Ticket | Factura A (maneja el checkbox oculto payment-factura-a)
+  if (dom.invoiceTypeSeg) {
+    dom.invoiceTypeSeg.querySelectorAll('.cn-seg-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        dom.invoiceTypeSeg.querySelectorAll('.cn-seg-btn').forEach(b => b.classList.remove('cn-seg-on'));
+        btn.classList.add('cn-seg-on');
+        dom.paymentFacturaA.checked = (btn.dataset.invoice === 'factura');
+        dom.paymentFacturaA.dispatchEvent(new Event('change'));
+      });
+    });
+  }
+
+  // v18.17: Switch de unidad del descuento ($ / %)
+  if (dom.discountUnit) {
+    dom.discountUnit.querySelectorAll('.cn-unit-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        dom.discountUnit.querySelectorAll('.cn-unit-btn').forEach(b => b.classList.remove('cn-unit-on'));
+        btn.classList.add('cn-unit-on');
+        updatePaymentPriceSummary();
+      });
+    });
+  }
 
   // v18.16: Fecha "cambiar" — revela el datetime, y sincroniza el display
   if (dom.btnChangeDate) {

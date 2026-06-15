@@ -2733,3 +2733,33 @@ input[type="datetime-local"] {
 /* Sticky CTA with amount */
 .cn-cta { position: sticky; bottom: 0; z-index: 2; }
 .cn-cta-amount { opacity: 0.75; font-weight: 600; margin-left: 6px; }
+
+/* =========================================================
+   v18.17 — Comprobante (segmentado + switch $/% + resumen)
+   ========================================================= */
+.cn-lbl { display: block; font-size: 0.74rem; color: var(--text-secondary); margin-bottom: 7px; margin-top: 4px; }
+/* Segmented control (Ticket | Factura A) */
+.cn-seg { display: flex; background: rgba(255,255,255,0.04); border: 1px solid var(--glass-border); border-radius: var(--radius-md); padding: 4px; margin-bottom: 12px; }
+.cn-seg-btn { flex: 1; text-align: center; padding: 9px; font-size: 0.83rem; color: var(--text-secondary); border: none; background: transparent; border-radius: 9px; cursor: pointer; transition: all var(--transition); }
+.cn-seg-btn.cn-seg-on { background: var(--color-primary); color: #fff; font-weight: 600; }
+/* Info note */
+.cn-info { display: flex; gap: 8px; background: var(--color-primary-light); border: 1px solid rgba(124,92,252,0.3); border-radius: var(--radius-md); padding: 9px 11px; font-size: 0.76rem; color: #cbb9ff; margin-bottom: 12px; }
+.cn-info span { flex-shrink: 0; }
+/* Descuento + unit switch */
+.cn-disc { display: flex; gap: 8px; margin-bottom: 12px; }
+.cn-disc-input { flex: 1; background: rgba(255,255,255,0.04); border: 1px solid var(--glass-border); border-radius: var(--radius-md); padding: 11px 12px; color: var(--text-primary); font-size: 1rem; }
+.cn-unit { display: flex; background: rgba(255,255,255,0.04); border: 1px solid var(--glass-border); border-radius: var(--radius-md); padding: 3px; }
+.cn-unit-btn { padding: 7px 14px; font-size: 0.9rem; color: var(--text-secondary); border: none; background: transparent; border-radius: 8px; cursor: pointer; }
+.cn-unit-btn.cn-unit-on { background: var(--color-primary); color: #fff; font-weight: 700; }
+/* Resumen de precio */
+.cn-sum { border: 1px solid var(--glass-border); border-radius: var(--radius-md); padding: 13px; background: rgba(255,255,255,0.02); margin-bottom: 12px; }
+.cn-sum-st { font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 9px; }
+.cn-sum-r { display: flex; justify-content: space-between; padding: 4px 0; font-size: 0.84rem; color: var(--text-secondary); }
+.cn-sum-r b { color: var(--text-primary); font-weight: 600; }
+.cn-sum-r.cn-add b { color: var(--color-warning); }
+.cn-sum-r.cn-sub b { color: var(--color-success); }
+.cn-sum-hero { display: flex; justify-content: space-between; align-items: center; margin-top: 9px; padding-top: 11px; border-top: 1px dashed rgba(255,255,255,0.18); }
+.cn-sum-hl { font-size: 0.8rem; color: var(--text-secondary); }
+.cn-sum-hs { font-size: 0.68rem; color: var(--text-muted); }
+.cn-sum-hv { font-size: 1.3rem; font-weight: 800; color: var(--color-primary); }
+.cn-sum-note { font-size: 0.72rem; color: var(--color-primary); margin-top: 10px; }

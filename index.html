@@ -13,7 +13,7 @@
   <link rel="manifest" href="manifest.json">
   <link rel="apple-touch-icon" href="icons/icon-192.svg">
   <link rel="icon" type="image/svg+xml" href="icons/icon-192.svg">
-  <link rel="stylesheet" href="style.css?v=18.16">
+  <link rel="stylesheet" href="style.css?v=18.17">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 </head>
@@ -465,42 +465,35 @@
         <details class="price-adjustments-accordion settlement-hide" id="adjustments-details">
           <summary class="adjustments-summary">&#9881;&#65039; Mas opciones</summary>
           <div class="adjustments-panel" id="adjustments-panel">
-            <div class="form-group form-group-checkbox">
-              <label class="checkbox-label">
-                <input type="checkbox" id="payment-factura-a">
-                <span class="checkbox-custom"></span>
-                Factura A (percepciones IIBB 3.66% + IVA 3%)
-              </label>
+            <!-- v18.17: Tipo de comprobante (segmentado) -->
+            <label class="cn-lbl">Tipo de comprobante</label>
+            <div class="cn-seg" id="invoice-type-seg">
+              <button type="button" class="cn-seg-btn cn-seg-on" data-invoice="ticket">&#129534; Ticket</button>
+              <button type="button" class="cn-seg-btn" data-invoice="factura">&#128196; Factura A</button>
             </div>
-            <div id="factura-a-detail" class="factura-a-detail hidden">
-              <div class="info-line">
-                <span class="info-label">ICL (Imp. Comb. Liquidos):</span>
-                <span class="info-value">$288,78/l</span>
-              </div>
-              <div class="info-line">
-                <span class="info-label">IDC (Imp. Dioxido Carbono):</span>
-                <span class="info-value">$17,69/l</span>
+            <input type="checkbox" id="payment-factura-a" class="hidden">
+            <div id="factura-a-detail" class="cn-info hidden">
+              <span>&#9432;</span>
+              <div>La Factura A discrimina percepciones (IIBB 3,66% + IVA 3%). Se suman al costo del tanque.</div>
+            </div>
+            <!-- v18.17: Descuento con switch $/% -->
+            <label class="cn-lbl">Descuento / Reintegro <span class="opt">&middot; opcional</span></label>
+            <div class="cn-disc">
+              <input type="number" id="payment-discount" min="0" step="0.01" placeholder="0" class="cn-disc-input">
+              <div class="cn-unit" id="discount-unit">
+                <button type="button" class="cn-unit-btn cn-unit-on" data-unit="$">$</button>
+                <button type="button" class="cn-unit-btn" data-unit="%">%</button>
               </div>
             </div>
-            <div class="form-group">
-              <label for="payment-discount">Descuento/Reintegro incluido ($)</label>
-              <input type="number" id="payment-discount" min="0" step="0.01" placeholder="Ej: 500">
-            </div>
-            <!-- v10: Dynamic Price Summary -->
-            <div id="payment-price-summary" class="payment-price-summary hidden">
-              <div class="summary-line">
-                <span>Pagaste:</span>
-                <strong id="summary-paid"></strong>
+            <!-- v18.17: Resumen de precio -->
+            <div id="payment-price-summary" class="cn-sum hidden">
+              <div class="cn-sum-st">Resumen de precio</div>
+              <div id="cn-sum-lines"></div>
+              <div class="cn-sum-hero">
+                <div><div class="cn-sum-hl">Precio efectivo</div><div class="cn-sum-hs" id="cn-sum-hero-sub">el que va al pool</div></div>
+                <div class="cn-sum-hv" id="summary-effective-price">$0/l</div>
               </div>
-              <div class="summary-line">
-                <span>Precio Surtidor:</span>
-                <strong id="summary-pump-price"></strong>
-              </div>
-              <div class="summary-line summary-line-highlight">
-                <span>Precio Efectivo:</span>
-                <strong id="summary-effective-price"></strong>
-              </div>
-              <div id="summary-perception-note" class="summary-note hidden"></div>
+              <div id="summary-perception-note" class="cn-sum-note hidden"></div>
             </div>
             <!-- v15: Photo Evidence -->
             <div class="form-group" id="photo-capture-group">
@@ -753,6 +746,6 @@
   <!-- Toast Container -->
   <div id="toast-container" class="toast-container"></div>
 
-  <script src="app.js?v=18.16"></script>
+  <script src="app.js?v=18.17"></script>
 </body>
 </html>
