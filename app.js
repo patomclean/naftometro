@@ -1,4 +1,4 @@
-console.log("🚀 Naftómetro v18.19 cargado correctamente");
+console.log("🚀 Naftómetro v18.20 cargado correctamente");
 
 // ============================================================
 // 1. CONSTANTS & CONFIGURATION
@@ -163,6 +163,9 @@ const dom = {
   costPreviewKm: $('#cost-preview-km'),
   costPreviewLitros: $('#cost-preview-litros'),
   costPreviewSrc: $('#cost-preview-src'),
+  // v18.20: Viajes frecuentes
+  frequentTrips: $('#frequent-trips'),
+  frequentTripsChips: $('#frequent-trips-chips'),
   summaryGrid: $('#summary-grid'),
   summaryTotalValue: $('#summary-total-value'),
   balancesGrid: $('#balances-grid'),
@@ -3014,6 +3017,8 @@ function openTripModal(editTrip) {
   if (dom.btnChangeTripDate) toggleHidden(dom.btnChangeTripDate, false);
   renderTripDateDisplay();
   updateTripCtaKm();
+  // v18.20: viajes frecuentes del piloto seleccionado (no se muestran al editar)
+  renderFrequentTrips(editTrip ? null : dom.tripDriver.value);
   toggleHidden(dom.tripModal, false);
 }
 
@@ -3486,6 +3491,36 @@ function handleDeletePayment(payment) {
 }
 
 // --- Trip Form ---
+
+// v18.20: Viajes frecuentes — personalizado por piloto (los viajes de uno
+// no le sirven a otro: la novia de Pato no es el trabajo de Marcos)
+function renderFrequentTrips(driver) {
+  if (!dom.frequentTrips || !dom.frequentTripsChips) return;
+  if (!driver) { toggleHidden(dom.frequentTrips, true); return; }
+
+  // Agrupar viajes del piloto por (nota normalizada + km redondeado)
+  const groups = {};
+  state.trips.forEach(t => {
+    if (t.driver !== driver) return;
+    const note = (t.note || '').trim();
+    if (!note) return; // solo agrupamos viajes con nota (son los "identificables")
+    const key = note.toLowerCase() + '|' + Math.round(t.km);
+    if (!groups[key]) groups[key] = { note, km: t.km, driveType: t.drive_type || 'Mixto', count: 0 };
+    groups[key].count++;
+  });
+
+  const frequent = Object.values(groups)
+    .filter(g => g.count >= 2) // al menos 2 veces para considerarse "frecuente"
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 4);
+
+  if (frequent.length === 0) { toggleHidden(dom.frequentTrips, true); return; }
+
+  dom.frequentTripsChips.innerHTML = frequent
+    .map(g => `<button type="button" class="cn-freq-chip" data-km="${g.km}" data-note="${g.note.replace(/"/g, '&quot;')}" data-drive="${g.driveType}">${g.note} &middot; ${g.km} km</button>`)
+    .join('');
+  toggleHidden(dom.frequentTrips, false);
+}
 
 // v18.19: Registrar Viaje — helpers Express
 function friendlyDate(val) {
@@ -4102,6 +4137,23 @@ function bindEvents() {
   // v18.19: Ida y vuelta — recalcula km/costo
   if (dom.tripRoundTrip) {
     dom.tripRoundTrip.addEventListener('change', handleTripKmInput);
+  }
+  // v18.20: Viajes frecuentes — re-render al cambiar piloto, autocompletar al tocar un chip
+  dom.tripDriver.addEventListener('change', () => {
+    if (!state.editingTripId) renderFrequentTrips(dom.tripDriver.value);
+  });
+  if (dom.frequentTripsChips) {
+    dom.frequentTripsChips.addEventListener('click', (e) => {
+      const chip = e.target.closest('.cn-freq-chip');
+      if (!chip) return;
+      dom.tripKm.value = chip.dataset.km;
+      dom.tripNote.value = chip.dataset.note;
+      dom.tripDriveType.value = chip.dataset.drive;
+      dom.driveTypeSelector.querySelectorAll('.drive-type-btn').forEach(b =>
+        b.classList.toggle('drive-type-btn--active', b.dataset.type === chip.dataset.drive));
+      handleTripKmInput();
+      haptic();
+    });
   }
   // v18.19: Fecha "cambiar" del viaje
   if (dom.btnChangeTripDate) {
