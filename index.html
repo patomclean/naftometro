@@ -13,7 +13,7 @@
   <link rel="manifest" href="manifest.json">
   <link rel="apple-touch-icon" href="icons/icon-192.svg">
   <link rel="icon" type="image/svg+xml" href="icons/icon-192.svg">
-  <link rel="stylesheet" href="style.css?v=18.18">
+  <link rel="stylesheet" href="style.css?v=18.19">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 </head>
@@ -539,41 +539,55 @@
         <button id="btn-close-trip-modal" class="btn-icon">&times;</button>
       </div>
       <form id="trip-form">
-        <div class="form-row">
-          <div class="form-group">
-            <label for="trip-driver">Piloto</label>
-            <select id="trip-driver" required>
-              <option value="">Seleccionar...</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label for="trip-km">Kilometros</label>
-            <input type="number" id="trip-km" min="0.1" step="0.1" required placeholder="Ej: 25">
+        <div class="form-group">
+          <label for="trip-driver">Piloto</label>
+          <select id="trip-driver" required>
+            <option value="">Seleccionar...</option>
+          </select>
+        </div>
+        <!-- v18.19: Km heroe -->
+        <div class="cn-hero">
+          <label for="trip-km" class="cn-hero-label">Kilometros recorridos</label>
+          <div class="cn-hero-wrap">
+            <input type="number" id="trip-km" min="0.1" step="0.1" required placeholder="0" class="cn-hero-input">
+            <span class="cn-hero-unit">km</span>
           </div>
         </div>
-        <div class="form-group">
-          <label for="trip-occurred-at">Fecha y hora</label>
-          <input type="datetime-local" id="trip-occurred-at">
+        <!-- v18.19: Ida y vuelta -->
+        <label class="cn-toggle cn-toggle-primary">
+          <span class="cn-toggle-txt"><strong>&#128257; Ida y vuelta</strong><small id="trip-rt-hint">Duplica los km automaticamente</small></span>
+          <input type="checkbox" id="trip-round-trip" class="cn-toggle-input">
+          <span class="cn-toggle-track"><span class="cn-toggle-dot"></span></span>
+        </label>
+        <!-- v18.19: Tipo de manejo (segmentado con descripcion) -->
+        <label class="cn-lbl">Tipo de manejo</label>
+        <div class="drive-type-selector" id="drive-type-selector">
+          <button type="button" class="drive-type-btn" data-type="Urbano"><span class="dt-ic">&#127961;&#65039;</span><span class="dt-nm">Urbano</span><span class="dt-ds">ciudad, trafico</span></button>
+          <button type="button" class="drive-type-btn drive-type-btn--active" data-type="Mixto"><span class="dt-ic">&#128739;&#65039;</span><span class="dt-nm">Mixto</span><span class="dt-ds">combinado</span></button>
+          <button type="button" class="drive-type-btn" data-type="Ruta"><span class="dt-ic">&#127937;</span><span class="dt-nm">Ruta</span><span class="dt-ds">autopista</span></button>
+        </div>
+        <input type="hidden" id="trip-drive-type" value="Mixto">
+        <!-- v18.19: Costo estimado (preview) -->
+        <div class="cn-cost hidden" id="cost-preview">
+          <div class="cn-cost-flow"><span id="cost-preview-km">0 km</span> <span class="cn-cost-arrow">&rarr;</span> <b id="cost-preview-litros">~0 L</b> <span class="cn-cost-arrow">&rarr;</span></div>
+          <div class="cn-cost-big" id="cost-preview-value">$0,00</div>
+          <div class="cn-cost-src" id="cost-preview-src"></div>
+        </div>
+        <!-- v18.19: Fecha (Hoy / cambiar) -->
+        <div class="cn-date">
+          <span class="cn-date-disp">&#128340; <b id="trip-date-display">Hoy</b></span>
+          <button type="button" id="btn-change-trip-date" class="cn-link">cambiar</button>
+          <div id="trip-date-field" class="cn-date-field hidden">
+            <input type="datetime-local" id="trip-occurred-at">
+          </div>
         </div>
         <div class="form-group">
           <label for="trip-note">Nota (opcional)</label>
           <input type="text" id="trip-note" maxlength="100" placeholder="Ej: Ida al trabajo">
         </div>
-        <div class="form-group">
-          <label>Tipo de manejo</label>
-          <div class="drive-type-selector" id="drive-type-selector">
-            <button type="button" class="drive-type-btn" data-type="Urbano">🏙️ Urbano</button>
-            <button type="button" class="drive-type-btn drive-type-btn--active" data-type="Mixto">🛣️ Mixto</button>
-            <button type="button" class="drive-type-btn" data-type="Ruta">🏁 Ruta</button>
-          </div>
-          <input type="hidden" id="trip-drive-type" value="Mixto">
-        </div>
-        <div class="cost-preview" id="cost-preview">
-          <span>Costo estimado:</span>
-          <strong id="cost-preview-value">$0,00</strong>
-        </div>
         <button type="submit" id="btn-submit-trip" class="btn btn-primary btn-block">
           <span class="btn-text">Registrar viaje</span>
+          <span id="trip-cta-km" class="cn-cta-amount"></span>
           <span class="btn-loader hidden"></span>
         </button>
       </form>
@@ -746,6 +760,6 @@
   <!-- Toast Container -->
   <div id="toast-container" class="toast-container"></div>
 
-  <script src="app.js?v=18.18"></script>
+  <script src="app.js?v=18.19"></script>
 </body>
 </html>

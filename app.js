@@ -1,4 +1,4 @@
-console.log("🚀 Naftómetro v18.18 cargado correctamente");
+console.log("🚀 Naftómetro v18.19 cargado correctamente");
 
 // ============================================================
 // 1. CONSTANTS & CONFIGURATION
@@ -152,6 +152,17 @@ const dom = {
   tripNote: $('#trip-note'),
   costPreviewValue: $('#cost-preview-value'),
   btnSubmitTrip: $('#btn-submit-trip'),
+  // v18.19: Registrar Viaje UX refs
+  tripRoundTrip: $('#trip-round-trip'),
+  tripRtHint: $('#trip-rt-hint'),
+  tripDateDisplay: $('#trip-date-display'),
+  btnChangeTripDate: $('#btn-change-trip-date'),
+  tripDateField: $('#trip-date-field'),
+  tripCtaKm: $('#trip-cta-km'),
+  costPreview: $('#cost-preview'),
+  costPreviewKm: $('#cost-preview-km'),
+  costPreviewLitros: $('#cost-preview-litros'),
+  costPreviewSrc: $('#cost-preview-src'),
   summaryGrid: $('#summary-grid'),
   summaryTotalValue: $('#summary-total-value'),
   balancesGrid: $('#balances-grid'),
@@ -2978,6 +2989,7 @@ function openTripModal(editTrip) {
       dom.driveTypeSelector.querySelectorAll('.drive-type-btn').forEach(b =>
         b.classList.toggle('drive-type-btn--active', b.dataset.type === savedType));
     }
+    if (dom.tripRoundTrip) dom.tripRoundTrip.checked = false; // v18.19
     handleTripKmInput();
     dom.tripModalTitle.textContent = 'Editar viaje';
     dom.btnSubmitTrip.querySelector('.btn-text').textContent = 'Guardar cambios';
@@ -2988,13 +3000,20 @@ function openTripModal(editTrip) {
     dom.tripDriveType.value = 'Mixto';
     dom.driveTypeSelector.querySelectorAll('.drive-type-btn').forEach(b =>
       b.classList.toggle('drive-type-btn--active', b.dataset.type === 'Mixto'));
+    if (dom.tripRoundTrip) dom.tripRoundTrip.checked = false; // v18.19
     dom.costPreviewValue.textContent = '$0,00';
+    toggleHidden(dom.costPreview, true);
     dom.tripModalTitle.textContent = 'Registrar viaje';
     dom.btnSubmitTrip.querySelector('.btn-text').textContent = 'Registrar viaje';
     // v18: Auto-select logged-in user's driver
     const myDriver = getMyDriverName(vehicle.id);
     if (myDriver) dom.tripDriver.value = myDriver;
   }
+  // v18.19: Express UX — colapsar fecha, render display + km en CTA
+  toggleHidden(dom.tripDateField, true);
+  if (dom.btnChangeTripDate) toggleHidden(dom.btnChangeTripDate, false);
+  renderTripDateDisplay();
+  updateTripCtaKm();
   toggleHidden(dom.tripModal, false);
 }
 
@@ -3468,19 +3487,57 @@ function handleDeletePayment(payment) {
 
 // --- Trip Form ---
 
+// v18.19: Registrar Viaje — helpers Express
+function friendlyDate(val) {
+  if (!val) return 'Hoy';
+  const d = new Date(val);
+  if (isNaN(d.getTime())) return 'Hoy';
+  const now = new Date(); const yest = new Date(now); yest.setDate(now.getDate() - 1);
+  const hh = d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+  if (d.toDateString() === now.toDateString()) return `Hoy, ${hh}`;
+  if (d.toDateString() === yest.toDateString()) return `Ayer, ${hh}`;
+  return `${d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' })}, ${hh}`;
+}
+// km efectivo (ida y vuelta duplica)
+function getEffectiveTripKm() {
+  const base = parseFloat(dom.tripKm.value) || 0;
+  return (dom.tripRoundTrip && dom.tripRoundTrip.checked) ? base * 2 : base;
+}
+function renderTripDateDisplay() {
+  if (dom.tripDateDisplay) dom.tripDateDisplay.textContent = friendlyDate(dom.tripOccurredAt.value);
+}
+function updateTripCtaKm() {
+  if (!dom.tripCtaKm) return;
+  const km = getEffectiveTripKm();
+  dom.tripCtaKm.textContent = km > 0 ? `· ${Number(km.toFixed(1))} km` : '';
+}
+
 function handleTripKmInput() {
   const vehicle = getActiveVehicle();
-  const km = parseFloat(dom.tripKm.value) || 0;
+  const base = parseFloat(dom.tripKm.value) || 0;
+  const km = getEffectiveTripKm();
+  // hint de ida y vuelta
+  if (dom.tripRtHint) {
+    dom.tripRtHint.textContent = (dom.tripRoundTrip && dom.tripRoundTrip.checked && base > 0)
+      ? `${Number(base.toFixed(1))} km → ${Number(km.toFixed(1))} km`
+      : 'Duplica los km automaticamente';
+  }
+  updateTripCtaKm();
   if (vehicle && km > 0) {
     const driveType = dom.tripDriveType ? dom.tripDriveType.value : 'Mixto';
     const consumption = getConsumptionForDriveType(vehicle, driveType);
     // v17: Use PPP and correction_factor in preview
     const tripPrice = vehicle.current_ppp > 0 ? vehicle.current_ppp : getLatestFuelPrice(vehicle);
     const corrFactor = vehicle.correction_factor || 1.0;
-    const { cost } = calculateCost(km, consumption, tripPrice, corrFactor);
+    const { liters, cost } = calculateCost(km, consumption, tripPrice, corrFactor);
+    if (dom.costPreviewKm) dom.costPreviewKm.textContent = `${Number(km.toFixed(1))} km`;
+    if (dom.costPreviewLitros) dom.costPreviewLitros.textContent = `~${liters.toFixed(1)} L`;
     dom.costPreviewValue.textContent = formatCurrency(cost);
+    if (dom.costPreviewSrc) dom.costPreviewSrc.textContent = `a ${formatCurrency(tripPrice)}/l · consumo ${driveType} (${consumption} km/l)`;
+    toggleHidden(dom.costPreview, false);
   } else {
     dom.costPreviewValue.textContent = '$0,00';
+    toggleHidden(dom.costPreview, true);
   }
 }
 
@@ -3494,7 +3551,7 @@ async function handleTripSubmit(e) {
   const vehicle = getActiveVehicle();
   if (!vehicle) { setButtonLoading(btn, false); return; }
 
-  const km = parseFloat(dom.tripKm.value);
+  const km = getEffectiveTripKm(); // v18.19: incluye ida y vuelta (x2)
   if (!km || km <= 0) {
     showToast('Ingresa los kilometros recorridos', 'error');
     setButtonLoading(btn, false);
@@ -4041,6 +4098,20 @@ function bindEvents() {
   // Trip form
   dom.tripForm.addEventListener('submit', handleTripSubmit);
   dom.tripKm.addEventListener('input', handleTripKmInput);
+
+  // v18.19: Ida y vuelta — recalcula km/costo
+  if (dom.tripRoundTrip) {
+    dom.tripRoundTrip.addEventListener('change', handleTripKmInput);
+  }
+  // v18.19: Fecha "cambiar" del viaje
+  if (dom.btnChangeTripDate) {
+    dom.btnChangeTripDate.addEventListener('click', () => {
+      toggleHidden(dom.tripDateField, false);
+      toggleHidden(dom.btnChangeTripDate, true);
+      dom.tripOccurredAt.focus();
+    });
+  }
+  dom.tripOccurredAt.addEventListener('change', renderTripDateDisplay);
 
   // v13: Drive type selector
   dom.driveTypeSelector.addEventListener('click', (e) => {

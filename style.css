@@ -2762,3 +2762,27 @@ input[type="datetime-local"] {
 .cn-sum-hs { font-size: 0.68rem; color: var(--text-muted); }
 .cn-sum-hv { font-size: 1.3rem; font-weight: 800; color: var(--color-primary); }
 .cn-sum-note { font-size: 0.72rem; color: var(--color-primary); margin-top: 10px; }
+
+/* =========================================================
+   v18.19 — Registrar Viaje (km heroe + ida/vuelta + drive-type + costo)
+   ========================================================= */
+.cn-hero-unit { color: var(--text-muted); font-size: 1.1rem; font-weight: 600; margin-left: 4px; }
+/* Toggle variante primary (ida y vuelta) */
+.cn-toggle-primary { background: rgba(124,92,252,0.08); border-color: rgba(124,92,252,0.28); }
+.cn-toggle-primary .cn-toggle-input:checked ~ .cn-toggle-track { background: var(--color-primary); }
+/* Tipo de manejo segmentado (con descripcion) */
+.drive-type-selector { display: flex; gap: 7px; margin-bottom: 0.85rem; }
+.drive-type-btn { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 1px; background: rgba(255,255,255,0.04); border: 1px solid var(--glass-border); border-radius: var(--radius-md); padding: 9px 4px; cursor: pointer; color: var(--text-secondary); transition: all var(--transition); }
+.drive-type-btn .dt-ic { font-size: 1rem; }
+.drive-type-btn .dt-nm { font-size: 0.8rem; font-weight: 600; color: var(--text-primary); }
+.drive-type-btn .dt-ds { font-size: 0.62rem; color: var(--text-muted); line-height: 1.2; }
+.drive-type-btn--active { background: var(--color-primary); border-color: var(--color-primary); }
+.drive-type-btn--active .dt-nm { color: #fff; }
+.drive-type-btn--active .dt-ds { color: rgba(255,255,255,0.7); }
+/* Costo estimado (preview) */
+.cn-cost { border: 1px solid var(--glass-border); border-radius: var(--radius-md); padding: 12px; background: rgba(255,255,255,0.02); margin-bottom: 0.85rem; }
+.cn-cost-flow { display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 0.82rem; color: var(--text-secondary); margin-bottom: 5px; }
+.cn-cost-flow b { color: var(--text-primary); }
+.cn-cost-arrow { color: var(--color-primary); }
+.cn-cost-big { text-align: center; font-size: 1.5rem; font-weight: 800; color: var(--color-primary); }
+.cn-cost-src { text-align: center; font-size: 0.68rem; color: var(--text-muted); margin-top: 2px; }
