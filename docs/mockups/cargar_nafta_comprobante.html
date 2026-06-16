@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Naftómetro — Comprobante (Factura A / Descuento)</title>
+<style>
+  :root{
+    --color-primary:#7c5cfc; --color-primary-light:rgba(124,92,252,.15);
+    --color-danger:#ef4444; --color-success:#22c55e; --color-warning:#f59e0b;
+    --bg-gradient-start:#0f0c29; --bg-gradient-mid:#1a1440; --bg-gradient-end:#24243e;
+    --glass-bg:rgba(255,255,255,.06); --glass-border:rgba(255,255,255,.1);
+    --text-primary:#f1f1f1; --text-secondary:#a0a0b8; --text-muted:#6b6b80;
+    --radius-md:12px; --radius-lg:16px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}
+  body{background:linear-gradient(135deg,var(--bg-gradient-start),var(--bg-gradient-mid),var(--bg-gradient-end));color:var(--text-primary);min-height:100vh;padding:24px;line-height:1.5}
+  .page{max-width:1150px;margin:0 auto}
+  h1{font-size:1.5rem;margin-bottom:4px;background:linear-gradient(135deg,#fff,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+  .sub{color:var(--text-secondary);margin-bottom:28px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(310px,1fr));gap:26px;align-items:start}
+  .col h2{font-size:.98rem;color:var(--color-primary);margin-bottom:3px}
+  .col .d{color:var(--text-secondary);font-size:.83rem;margin-bottom:12px}
+  .panel{background:var(--glass-bg);border:1px solid var(--glass-border);border-radius:var(--radius-lg);padding:16px}
+  .label{font-size:.74rem;color:var(--text-secondary);margin-bottom:8px;display:block}
+  .opt{color:var(--text-muted);font-weight:400;font-size:.7rem}
+  .seg{display:flex;background:rgba(255,255,255,.04);border:1px solid var(--glass-border);border-radius:var(--radius-md);padding:4px;margin-bottom:14px}
+  .seg div{flex:1;text-align:center;padding:9px;font-size:.83rem;color:var(--text-secondary);border-radius:9px;cursor:pointer}
+  .seg div.on{background:var(--color-primary);color:#fff;font-weight:600}
+  .info{display:flex;gap:8px;background:var(--color-primary-light);border:1px solid rgba(124,92,252,.3);border-radius:var(--radius-md);padding:9px 11px;font-size:.76rem;color:#cbb9ff;margin-bottom:14px}
+  .disc{display:flex;gap:8px;margin-bottom:14px}
+  .disc input{flex:1;background:rgba(255,255,255,.04);border:1px solid var(--glass-border);border-radius:var(--radius-md);padding:11px 12px;color:var(--text-primary);font-size:1rem}
+  .unit{display:flex;background:rgba(255,255,255,.04);border:1px solid var(--glass-border);border-radius:var(--radius-md);padding:3px}
+  .unit div{padding:7px 13px;font-size:.85rem;color:var(--text-secondary);border-radius:8px;cursor:pointer}
+  .unit div.on{background:var(--color-primary);color:#fff;font-weight:700}
+  .sum{border:1px solid var(--glass-border);border-radius:var(--radius-md);padding:13px;background:rgba(255,255,255,.02)}
+  .sum .st{font-size:.7rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:9px}
+  .sum .r{display:flex;justify-content:space-between;padding:4px 0;font-size:.84rem;color:var(--text-secondary)}
+  .sum .r b{color:var(--text-primary);font-weight:600}
+  .sum .r.add b{color:var(--color-warning)}
+  .sum .r.sub b{color:var(--color-success)}
+  .sum .hero{display:flex;justify-content:space-between;align-items:center;margin-top:9px;padding-top:11px;border-top:1px dashed rgba(255,255,255,.18)}
+  .sum .hero .k{font-size:.8rem;color:var(--text-secondary)}
+  .sum .hero .k small{display:block;color:var(--text-muted);font-size:.68rem}
+  .sum .hero .v{font-size:1.35rem;font-weight:800;color:var(--color-primary)}
+  .expand{font-size:.74rem;color:var(--color-primary);margin-top:10px;cursor:pointer}
+  .rec{background:var(--glass-bg);border:1px solid var(--glass-border);border-radius:var(--radius-lg);padding:18px;margin-top:32px}
+  .rec h2{font-size:1.05rem;margin-bottom:12px}
+  .rec .row{display:flex;gap:12px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.06);font-size:.85rem}
+  .rec .row:last-child{border:none}
+  .rec .row .k{color:var(--color-primary);font-weight:600;min-width:150px}
+  .rec .row .v{color:var(--text-secondary)}
+  .tagrec{display:inline-block;font-size:.64rem;background:rgba(34,197,94,.18);border:1px solid rgba(34,197,94,.4);color:#86efac;padding:2px 8px;border-radius:20px;margin-bottom:8px}
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>Comprobante y precio — diseño de la sección</h1>
+  <p class="sub">Cómo se ve Factura A y el descuento, y cómo impactan en el precio efectivo (lo que cuenta para las cuentas)</p>
+
+  <div class="grid">
+
+    <!-- TICKET -->
+    <div class="col">
+      <h2>① Ticket (simple)</h2>
+      <p class="d">El caso normal. Sin recargos ni descuentos. El precio efectivo = lo que pagaste.</p>
+      <div class="panel">
+        <label class="label">Tipo de comprobante</label>
+        <div class="seg"><div class="on">🧾 Ticket</div><div>📄 Factura A</div></div>
+
+        <label class="label">Descuento / Reintegro <span class="opt">· opcional</span></label>
+        <div class="disc"><input placeholder="0" readonly><div class="unit"><div class="on">$</div><div>%</div></div></div>
+
+        <div class="sum">
+          <div class="st">Resumen de precio</div>
+          <div class="r"><span>Pagaste</span><b>$79.995</b></div>
+          <div class="r"><span>Litros</span><b>32,5 L</b></div>
+          <div class="hero"><div class="k">Precio efectivo<small>el que va al pool</small></div><div class="v">$2.461/L</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- FACTURA A -->
+    <div class="col">
+      <h2>② Factura A (con percepciones)</h2>
+      <p class="d">Suma percepciones IIBB + IVA → encarece el precio efectivo. Se ven discriminadas.</p>
+      <div class="panel">
+        <label class="label">Tipo de comprobante</label>
+        <div class="seg"><div>🧾 Ticket</div><div class="on">📄 Factura A</div></div>
+
+        <div class="info">ⓘ La Factura A discrimina percepciones (IIBB 3,66% + IVA 3%). Se suman al costo del tanque.</div>
+
+        <label class="label">Descuento / Reintegro <span class="opt">· opcional</span></label>
+        <div class="disc"><input placeholder="0" readonly><div class="unit"><div class="on">$</div><div>%</div></div></div>
+
+        <div class="sum">
+          <div class="st">Resumen de precio</div>
+          <div class="r"><span>Precio surtidor</span><b>$2.326/L</b></div>
+          <div class="r add"><span>+ Percepciones (Fac. A)</span><b>+$4.403</b></div>
+          <div class="r"><span>Pagaste (total)</span><b>$79.995</b></div>
+          <div class="hero"><div class="k">Precio efectivo<small>incluye percepciones</small></div><div class="v">$2.461/L</div></div>
+          <div class="expand">▾ Ver desglose impositivo (IVA, IDC, IIBB)</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- DESCUENTO % -->
+    <div class="col">
+      <h2>③ Con descuento del 15%</h2>
+      <p class="d">Reintegro de app/club. Baja el precio efectivo → la nafta sale más barata para todos.</p>
+      <div class="panel">
+        <label class="label">Tipo de comprobante</label>
+        <div class="seg"><div class="on">🧾 Ticket</div><div>📄 Factura A</div></div>
+
+        <label class="label">Descuento / Reintegro <span class="opt">· opcional</span></label>
+        <div class="disc"><input value="15" readonly><div class="unit"><div>$</div><div class="on">%</div></div></div>
+
+        <div class="sum">
+          <div class="st">Resumen de precio</div>
+          <div class="r"><span>Pagaste</span><b>$79.995</b></div>
+          <div class="r sub"><span>− Descuento (15%)</span><b>−$11.999</b></div>
+          <div class="r"><span>Costo real</span><b>$67.996</b></div>
+          <div class="hero"><div class="k">Precio efectivo<small>ya con el descuento</small></div><div class="v">$2.092/L</div></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- RECOMENDACION -->
+  <div class="rec">
+    <span class="tagrec">★ Recomendación de experto</span>
+    <h2>Por qué este diseño es el mejor para la sección</h2>
+    <div class="row"><div class="k">Un solo campo de descuento</div><div class="v">Con switch <b>$ / %</b>. La gente recibe reintegros de las dos formas (monto fijo de MODO, % de app YPF). Un campo flexible cubre todo.</div></div>
+    <div class="row"><div class="k">Resumen en vivo</div><div class="v">El bloque "Resumen de precio" se recalcula a cada cambio. Hace <b>concreto</b> lo abstracto: ves cómo cada cosa mueve el precio efectivo.</div></div>
+    <div class="row"><div class="k">Precio efectivo = héroe</div><div class="v">Es el número que alimenta las cuentas. Va destacado abajo, con subtítulo de por qué ("incluye percepciones" / "ya con descuento").</div></div>
+    <div class="row"><div class="k">Percepciones discriminadas</div><div class="v">En Factura A se ven sumadas (transparencia). El desglose impositivo completo queda en "ver desglose" para no saturar.</div></div>
+    <div class="row"><div class="k">Coherente con el modelo</div><div class="v">El <b>precio efectivo</b> (± Factura A, ± descuento) es exactamente lo que entra al pool a costo (doc 05). Diseño y contabilidad alineados.</div></div>
+  </div>
+</div>
+</body>
+</html>

@@ -559,6 +559,22 @@ precio_efectivo = monto / litros                       // precio total (usado pa
 
 Las percepciones fiscales (IIBB, IVA percepcion) no forman parte del costo real del combustible, por lo que se restan para obtener el precio que se uso en la bomba.
 
+### Descuento / Reintegro y la unidad $/% (v18.17)
+
+Desde v18.17, el modal de carga tiene un **switch `$ / %`** para el descuento. `getDiscountAmount(monto)` convierte el valor a pesos: si la unidad es `%`, devuelve `monto × pct/100`; si es `$`, el valor literal.
+
+**🚩 Cambio importante:** hasta v18.16 el descuento se **guardaba** en `discount_amount` pero **no afectaba el costo** (`precio_efectivo = monto / litros`). Desde v18.17 el descuento **baja el costo de verdad**:
+
+```
+precio_efectivo = (monto - descuento) / litros
+```
+
+Y ese neto (`monto - descuento`) se usa tambien en:
+- El **promedio ponderado del PPP** (`current_ppp`).
+- El **credito `fuel_payment`** del ledger (lo que se le acredita al pagador).
+
+Solo afecta cargas CON descuento; las normales quedan identicas.
+
 ---
 
 ## 11. Activity Feed — Feed de Actividad (v18.5+)

@@ -2,7 +2,7 @@
 
 ## Linea de Tiempo del Proyecto
 
-El proyecto se desarrolla desde el 12 de febrero de 2026, con 40+ commits. La version actual es v18.15. La evolucion se organiza en fases:
+El proyecto se desarrolla desde el 12 de febrero de 2026, con 40+ commits. La version actual es v18.18. La evolucion se organiza en fases:
 
 ---
 
@@ -352,6 +352,32 @@ Las guardas son inertes en operacion normal (validado con tests de logica aislad
 
 ---
 
+## Fase 9: Rediseño UX Cargar Nafta (Junio 2026, v18.16-v18.18)
+
+Rediseño del modal de carga al layout **"Express"** (diseño en `docs/05_modelo_financiero_v2.md` + mockups en `docs/mockups/`).
+
+### v18.16 — Express layout
+- **Monto "heroe"**: campo grande y centrado con prefijo `$`.
+- **Chips de monto**: `+$10.000 / +$20.000 / +$50.000` a ancho completo (montos realistas AR 2026).
+- **Tanque lleno** como toggle (con micro-explicacion) en vez de checkbox.
+- **Fecha** "Hoy, HH:MM · cambiar": el `datetime-local` se despliega solo al tocar "cambiar". Helper `renderPaymentDateDisplay()`.
+- **"⚙️ Mas opciones"** (`<details>`, = el ex `adjustments-details`): agrupa los campos avanzados; ahora tambien contiene la foto del ticket.
+- **CTA con monto**: el boton muestra "Registrar carga · $X" (`updatePaymentCtaAmount()`).
+- Se preservaron TODOS los ids del form; modo settlement intacto (4 `.settlement-hide`: chips, form-row litros, toggle, "Mas opciones").
+
+### v18.17 — Comprobante rediseñado
+- **Tipo de comprobante**: control **segmentado** `Ticket | Factura A` (maneja el checkbox oculto `#payment-factura-a` via `setInvoiceTypeUI()`).
+- **Descuento / Reintegro** con **switch de unidad `$ / %`** (`getDiscountAmount()` convierte % a $).
+- **Resumen de precio** rediseñado: lineas (surtidor, +percepciones, pagaste, −descuento, costo real) con el **precio efectivo destacado** abajo y subtitulo contextual.
+- **🚩 Cambio de comportamiento financiero**: el descuento/reintegro ANTES se guardaba en `discount_amount` pero no afectaba nada. Ahora **baja el costo de verdad** — el neto (`monto − descuento`) se usa en el precio efectivo, en el promedio ponderado del PPP y en el credito `fuel_payment` del ledger. Solo afecta cargas CON descuento.
+
+### v18.18 — Fix superposicion
+- El CTA tenia `position: sticky` y se superponia con el contenido de "Mas opciones" al expandir. Se quito el sticky.
+
+**Diferido a proposito:** campo **odometro** (necesita columna en `payments` = migracion) y **monto formateado en vivo**.
+
+---
+
 ## Problemas de iOS/Safari Resueltos
 
 ### 1. Texto Vertical en Fechas (v15.3 → v15.4)
@@ -399,7 +425,7 @@ Las guardas son inertes en operacion normal (validado con tests de logica aislad
 
 ---
 
-## Estructura Visual Actual (v18.15)
+## Estructura Visual Actual (v18.18)
 
 ### Vista Detalle — Sub-tabs
 

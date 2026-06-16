@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Naftómetro — Mockups Modelo Financiero v2</title>
+<style>
+  :root{
+    --color-primary:#7c5cfc; --color-primary-hover:#6a4ae0; --color-primary-light:rgba(124,92,252,.15);
+    --color-danger:#ef4444; --color-success:#22c55e; --color-warning:#f59e0b;
+    --bg-gradient-start:#0f0c29; --bg-gradient-mid:#1a1440; --bg-gradient-end:#24243e;
+    --glass-bg:rgba(255,255,255,.06); --glass-border:rgba(255,255,255,.1); --glass-blur:12px;
+    --text-primary:#f1f1f1; --text-secondary:#a0a0b8; --text-muted:#6b6b80;
+    --radius-sm:8px; --radius-md:12px; --radius-lg:16px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}
+  body{background:linear-gradient(135deg,var(--bg-gradient-start),var(--bg-gradient-mid),var(--bg-gradient-end));color:var(--text-primary);min-height:100vh;padding:24px;line-height:1.5}
+  .page{max-width:1100px;margin:0 auto}
+  .page > h1{font-size:1.6rem;margin-bottom:4px;background:linear-gradient(135deg,#fff,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+  .page > .sub{color:var(--text-secondary);margin-bottom:28px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:28px}
+  .mock{display:flex;flex-direction:column;gap:10px}
+  .mock h2{font-size:.95rem;color:var(--color-primary);text-transform:uppercase;letter-spacing:.05em}
+  .mock .desc{color:var(--text-secondary);font-size:.85rem;margin-bottom:6px}
+  /* phone frame */
+  .phone{background:#05030f;border:8px solid #0a0820;border-radius:34px;padding:16px;box-shadow:0 20px 60px rgba(0,0,0,.5)}
+  .glass{background:var(--glass-bg);backdrop-filter:blur(var(--glass-blur));-webkit-backdrop-filter:blur(var(--glass-blur));border:1px solid var(--glass-border);border-radius:var(--radius-lg);padding:16px}
+  .label{font-size:.8rem;color:var(--text-secondary);margin-bottom:6px;display:block}
+  .field{width:100%;background:rgba(255,255,255,.04);border:1px solid var(--glass-border);border-radius:var(--radius-md);padding:11px 12px;color:var(--text-primary);font-size:1rem;margin-bottom:14px}
+  .field-new{border-color:var(--color-primary);box-shadow:0 0 0 3px var(--color-primary-light)}
+  .badge-new{display:inline-block;background:var(--color-primary);color:#fff;font-size:.6rem;font-weight:700;padding:2px 6px;border-radius:6px;vertical-align:middle;margin-left:6px;letter-spacing:.04em}
+  .hint{display:flex;gap:8px;align-items:flex-start;background:var(--color-primary-light);border:1px solid rgba(124,92,252,.35);border-radius:var(--radius-md);padding:10px 12px;font-size:.8rem;color:#cbb9ff;margin-bottom:14px}
+  .toggle{display:flex;align-items:center;justify-content:space-between;background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.35);border-radius:var(--radius-md);padding:11px 12px;margin-bottom:14px}
+  .toggle .sw{width:42px;height:24px;background:var(--color-success);border-radius:20px;position:relative}
+  .toggle .sw::after{content:'';position:absolute;width:18px;height:18px;background:#fff;border-radius:50%;top:3px;right:3px}
+  .btn{width:100%;background:var(--color-primary);color:#fff;border:none;border-radius:var(--radius-md);padding:13px;font-size:.95rem;font-weight:600;cursor:pointer}
+  .btn-ghost{background:transparent;border:1px solid var(--glass-border);color:var(--text-primary)}
+  .btn-wa{background:#25D366;color:#063}
+  .btn-warn{background:var(--color-warning);color:#1a1440}
+  .modal-title{display:flex;align-items:center;gap:8px;font-size:1.1rem;font-weight:700;margin-bottom:4px}
+  .modal-sub{color:var(--text-secondary);font-size:.82rem;margin-bottom:16px}
+  /* line items */
+  .li{display:flex;justify-content:space-between;align-items:center;padding:11px 0;border-bottom:1px solid rgba(255,255,255,.06)}
+  .li:last-child{border-bottom:none}
+  .li .left{display:flex;gap:10px;align-items:center}
+  .li .ico{width:30px;height:30px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:.9rem;flex-shrink:0}
+  .li .t{font-size:.85rem}
+  .li .s{font-size:.72rem;color:var(--text-muted)}
+  .li .amt{font-weight:700;font-size:.92rem;white-space:nowrap}
+  .pos{color:var(--color-success)} .neg{color:var(--color-danger)}
+  .total-row{display:flex;justify-content:space-between;align-items:center;margin-top:14px;padding-top:14px;border-top:1px dashed rgba(255,255,255,.18)}
+  .total-row .big{font-size:1.4rem;font-weight:800}
+  .pill{display:inline-block;background:rgba(255,255,255,.06);border:1px solid var(--glass-border);border-radius:20px;padding:3px 10px;font-size:.72rem;color:var(--text-secondary);margin:2px}
+  .tankbar{height:14px;background:rgba(255,255,255,.08);border-radius:20px;overflow:hidden;margin:10px 0 6px}
+  .tankfill{height:100%;background:linear-gradient(90deg,var(--color-success),#16a34a);border-radius:20px}
+  .row2{display:flex;justify-content:space-between;font-size:.76rem;color:var(--text-secondary)}
+  .avatar{width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:.8rem;color:#fff}
+  .callout{background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.4);border-radius:var(--radius-md);padding:12px;margin-bottom:14px}
+  .callout .big{font-size:1.5rem;font-weight:800;color:var(--color-warning)}
+  .steps{display:flex;gap:6px;margin-bottom:14px}
+  .step{flex:1;text-align:center;font-size:.66rem;padding:7px 4px;border-radius:8px;background:rgba(255,255,255,.05);color:var(--text-muted)}
+  .step.active{background:var(--color-primary);color:#fff;font-weight:700}
+  .note{font-size:.74rem;color:var(--text-muted);margin-top:10px;text-align:center}
+  .stack{display:flex;flex-direction:column;gap:9px}
+  .opt{font-weight:400;color:var(--text-muted);font-size:.72rem}
+  .accordion{border:1px solid var(--glass-border);border-radius:var(--radius-md);margin-bottom:14px;overflow:hidden}
+  .accordion-head{display:flex;justify-content:space-between;align-items:center;padding:11px 12px;background:rgba(255,255,255,.03);font-size:.85rem;color:var(--text-secondary);cursor:pointer}
+  .accordion-body{padding:12px;border-top:1px solid var(--glass-border)}
+  .check{display:flex;gap:9px;align-items:flex-start;margin-bottom:12px}
+  .check .box{width:18px;height:18px;border:1px solid var(--glass-border);border-radius:5px;flex-shrink:0;margin-top:2px}
+  .check .box.on{background:var(--color-primary);border-color:var(--color-primary);position:relative}
+  .check .box.on::after{content:'✓';position:absolute;color:#fff;font-size:.7rem;top:-1px;left:3px}
+  .sum{border:1px dashed rgba(255,255,255,.18);border-radius:var(--radius-md);padding:10px 12px;font-size:.78rem;margin-top:4px}
+  .sum .r{display:flex;justify-content:space-between;padding:3px 0;color:var(--text-secondary)}
+  .sum .r b{color:var(--text-primary)}
+  .ghost-field{display:flex;align-items:center;justify-content:center;gap:7px;border:1px dashed var(--glass-border);border-radius:var(--radius-md);padding:11px;color:var(--text-secondary);font-size:.85rem;margin-bottom:14px}
+  .crow{display:flex;justify-content:space-between;align-items:center;padding:12px;background:rgba(255,255,255,.03);border:1px solid var(--glass-border);border-radius:var(--radius-md);margin-bottom:8px;cursor:pointer}
+  .crow .chev{color:var(--text-muted);font-size:.8rem}
+  .banner{display:flex;gap:12px;align-items:center;background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.45);border-radius:var(--radius-md);padding:13px}
+  .banner .bico{font-size:1.3rem}
+  .vcard{background:rgba(255,255,255,.04);border:1px solid var(--glass-border);border-radius:var(--radius-md);padding:13px;margin-bottom:10px}
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>Naftómetro — Modelo Financiero v2</h1>
+  <p class="sub">Mockups de UX/UI · Pool a costo + Odómetro + Reconciliación de 3 niveles · (diseño, no implementado)</p>
+
+  <div class="grid">
+
+    <!-- ============ A) CARGA CON ODOMETRO ============ -->
+    <div class="mock">
+      <h2>A · Cargar Nafta (modal completo + odómetro opcional)</h2>
+      <p class="desc">Mantiene todo lo actual (Factura A, descuento, fecha, foto) y suma el odómetro como campo OPCIONAL.</p>
+      <div class="phone">
+        <div class="glass">
+          <div class="modal-title">⛽ Cargar Nafta</div>
+          <div class="modal-sub">Taos Hermanos Mc · PAPÁ</div>
+
+          <label class="label">Monto total ($)</label>
+          <input class="field" value="79.995" readonly>
+
+          <label class="label">Litros cargados</label>
+          <input class="field" value="32,5" readonly>
+
+          <label class="label">Precio por litro ($)</label>
+          <input class="field" value="2.461" readonly>
+
+          <label class="label">Km del auto / odómetro <span class="badge-new">NUEVO</span> <span class="opt">· opcional, podés dejarlo vacío</span></label>
+          <input class="field field-new" value="84.320" readonly>
+
+          <div class="hint">
+            <span>📊</span>
+            <div><b>Solo si cargás el odómetro:</b> con el anterior (84.070) recorriste <b>250 km</b> → rinde real <b>10,04 km/l</b>. Mejora las próximas estimaciones. Si lo dejás vacío, la carga funciona igual.</div>
+          </div>
+
+          <div class="accordion">
+            <div class="accordion-head"><span>Ajustes de Precio</span><span>▲</span></div>
+            <div class="accordion-body">
+              <div class="check"><div class="box"></div><div><b style="font-size:.85rem">Factura A</b><div style="font-size:.72rem;color:var(--text-secondary)">percepciones IIBB 3,66% + IVA 3% (encarece)</div></div></div>
+              <label class="label">Descuento / Reintegro incluido ($) <span class="opt">· abarata el tanque</span></label>
+              <input class="field" value="" placeholder="Ej: 500" readonly>
+              <div class="sum">
+                <div class="r"><span>Pagaste</span><b>$79.995</b></div>
+                <div class="r"><span>Precio surtidor</span><b>$2.461/L</b></div>
+                <div class="r"><span>Precio efectivo (al pool)</span><b>$2.461/L</b></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="toggle">
+            <div><strong>🔋 Tanque lleno</strong><div style="font-size:.72rem;color:var(--text-secondary)">Reconcilia el ciclo</div></div>
+            <div class="sw"></div>
+          </div>
+
+          <label class="label">Fecha y hora</label>
+          <input class="field" value="14/06/2026 16:08" readonly>
+
+          <label class="label">Nota (opcional)</label>
+          <input class="field" value="" placeholder="Ej: YPF de Av. Libertador" readonly>
+
+          <label class="label">Foto del ticket</label>
+          <div class="ghost-field">📷 Adjuntar Ticket</div>
+
+          <button class="btn">Registrar carga</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ B) BALANCE TRANSPARENTE ============ -->
+    <div class="mock">
+      <h2>B · Balance — desplegable por piloto</h2>
+      <p class="desc">Cada piloto es una fila. Tocás el nombre y se abre/cierra su detalle. Evita la saturación de líneas.</p>
+      <div class="phone">
+        <div class="glass">
+          <div style="font-weight:700;margin-bottom:10px">Balances</div>
+
+          <!-- Piloto ABIERTO -->
+          <div class="crow" style="background:var(--color-primary-light);border-color:rgba(124,92,252,.4)">
+            <div class="left" style="display:flex;gap:10px;align-items:center"><div class="avatar" style="background:#06b6d4">M</div><div><div style="font-weight:700;font-size:.9rem">Marcos</div><div style="font-size:.72rem;color:var(--text-muted)">18 viajes · 1.124 km</div></div></div>
+            <div style="display:flex;gap:10px;align-items:center"><div class="amt neg">−$104.991</div><span class="chev">▲</span></div>
+          </div>
+          <div style="padding:2px 6px 10px">
+            <div class="li"><div class="left"><div class="ico" style="background:rgba(34,197,94,.18)">💰</div><div class="t">Cargó nafta</div></div><div class="amt pos">+177.031</div></div>
+            <div class="li"><div class="left"><div class="ico" style="background:rgba(239,68,68,.18)">🚗</div><div class="t">Manejó (su consumo)</div></div><div class="amt neg">−154.342</div></div>
+            <div class="li"><div class="left"><div class="ico" style="background:rgba(245,158,11,.18)">⚖️</div><div class="t">Ajuste: km sin cargar</div></div><div class="amt neg">−17.680</div></div>
+          </div>
+
+          <!-- Pilotos CERRADOS -->
+          <div class="crow"><div class="left" style="display:flex;gap:10px;align-items:center"><div class="avatar" style="background:#ef4444">P</div><div style="font-weight:600;font-size:.9rem">PAPÁ</div></div><div style="display:flex;gap:10px;align-items:center"><div class="amt pos">+$137.888</div><span class="chev">▼</span></div></div>
+          <div class="crow"><div class="left" style="display:flex;gap:10px;align-items:center"><div class="avatar" style="background:#7c5cfc">P</div><div style="font-weight:600;font-size:.9rem">Pato</div></div><div style="display:flex;gap:10px;align-items:center"><div class="amt pos">+$122.705</div><span class="chev">▼</span></div></div>
+          <div class="crow"><div class="left" style="display:flex;gap:10px;align-items:center"><div class="avatar" style="background:#f43f5e">R</div><div style="font-weight:600;font-size:.9rem">Rafa</div></div><div style="display:flex;gap:10px;align-items:center"><div class="amt neg">−$72.199</div><span class="chev">▼</span></div></div>
+
+          <div class="note">Tocá un nombre para abrir/cerrar su detalle. Suma cero: al vaciarse el tanque, todos suman 0.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ C) RECONCILIACION 3 NIVELES ============ -->
+    <div class="mock">
+      <h2>C · Tanque Lleno detecta faltante (3 niveles)</h2>
+      <p class="desc">Avisar → Reclamar → Repartir. El reparto parejo es el último recurso, no el primero.</p>
+      <div class="phone">
+        <div class="glass">
+          <div class="steps">
+            <div class="step active">1 · Avisar</div>
+            <div class="step">2 · Reclamar</div>
+            <div class="step">3 · Repartir</div>
+          </div>
+          <div class="modal-title">⚠️ Faltan kilómetros sin cargar</div>
+          <div class="modal-sub">Ciclo del 30/05 al 08/06</div>
+
+          <div class="callout">
+            <div style="font-size:.78rem;color:var(--text-secondary)">El auto recorrió (por odómetro)</div>
+            <div class="big">+100 km</div>
+            <div style="font-size:.78rem;color:var(--text-secondary)">más de lo registrado en viajes · ≈ 10 L · ≈ $24.600</div>
+          </div>
+
+          <p style="font-size:.83rem;color:var(--text-secondary);margin-bottom:14px">¿Alguien manejó y se olvidó de cargar el viaje? Cargalo ahora y se le atribuye a quien corresponde.</p>
+
+          <div class="stack">
+            <button class="btn">➕ Agregar el viaje olvidado</button>
+            <button class="btn btn-wa">🟢 Avisar al grupo por WhatsApp</button>
+            <button class="btn btn-warn">⚖️ Nadie lo reclama → Repartir entre todos por km</button>
+          </div>
+          <div class="note">Si nadie reclama en 48 hs, se reparte solo (fase futura).</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ D) ESTADO DEL TANQUE (POOL A COSTO) ============ -->
+    <div class="mock">
+      <h2>D · Estado del tanque a costo (suma cero)</h2>
+      <p class="desc">El tanque se valúa a lo que se pagó, no al precio de hoy. Lo que vale = lo que se le debe a quien aportó.</p>
+      <div class="phone">
+        <div class="glass">
+          <div style="font-weight:700;margin-bottom:2px">⛽ Tanque del Taos</div>
+          <div class="tankbar"><div class="tankfill" style="width:53%"></div></div>
+          <div class="row2"><span>26,7 / 50 L</span><span>Costo prom: $2.461/L</span></div>
+
+          <div style="margin-top:16px;border-top:1px solid rgba(255,255,255,.08);padding-top:14px">
+            <div style="font-size:.78rem;color:var(--text-secondary);margin-bottom:8px">Hay <b style="color:var(--text-primary)">$65.817</b> de nafta en el tanque, aportada por:</div>
+            <div class="li" style="padding:7px 0"><div class="left"><div class="avatar" style="background:#ef4444;width:24px;height:24px;font-size:.7rem">P</div><div class="t">PAPÁ</div></div><div class="amt">$40.500</div></div>
+            <div class="li" style="padding:7px 0"><div class="left"><div class="avatar" style="background:#7c5cfc;width:24px;height:24px;font-size:.7rem">P</div><div class="t">Pato</div></div><div class="amt">$25.317</div></div>
+          </div>
+          <div class="hint" style="margin-top:14px;margin-bottom:0">
+            <span>🛡️</span>
+            <div>Esta plata está <b>respaldada</b>: a medida que se consuma la nafta, PAPÁ y Pato la recuperan. No pueden perder.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ E) DONDE APARECE EL AVISO ============ -->
+    <div class="mock">
+      <h2>E · ¿Dónde se ve el aviso de faltante?</h2>
+      <p class="desc">Aparece en 3 momentos para que no se pierda: al cerrar el tanque, como banner persistente, y en el feed.</p>
+      <div class="phone">
+        <div class="glass" style="padding:13px">
+          <div style="font-weight:700;font-size:.95rem;margin-bottom:2px">Taos Hermanos Mc</div>
+          <div style="font-size:.72rem;color:var(--text-muted);margin-bottom:12px">VW Taos 1.4 250 TSI</div>
+
+          <!-- Banner persistente -->
+          <div class="banner">
+            <span class="bico">⚠️</span>
+            <div style="flex:1">
+              <div style="font-size:.84rem;font-weight:600">Reconciliación pendiente</div>
+              <div style="font-size:.74rem;color:var(--text-secondary)">Faltan ~100 km sin cargar del último tanque</div>
+            </div>
+            <button class="btn" style="width:auto;padding:8px 14px;font-size:.8rem">Resolver</button>
+          </div>
+
+          <div class="tankbar" style="margin-top:14px"><div class="tankfill" style="width:53%"></div></div>
+          <div class="row2"><span>26,7 / 50 L</span><span>Costo prom: $2.461/L</span></div>
+
+          <div style="display:flex;gap:8px;margin-top:14px">
+            <div class="vcard" style="flex:1;text-align:center;margin:0"><div style="font-size:.7rem;color:var(--text-muted)">Mi Resumen</div></div>
+            <div class="vcard" style="flex:1;text-align:center;margin:0;border-color:var(--color-primary)"><div style="font-size:.7rem;color:var(--color-primary)">El Vehículo</div></div>
+            <div class="vcard" style="flex:1;text-align:center;margin:0"><div style="font-size:.7rem;color:var(--text-muted)">Finanzas</div></div>
+          </div>
+        </div>
+      </div>
+      <div class="glass" style="margin-top:12px;padding:14px">
+        <div style="font-size:.82rem;color:var(--text-secondary);line-height:1.6">
+          <b style="color:var(--text-primary)">3 lugares donde aparece:</b><br>
+          1️⃣ <b>Modal automático</b> apenas guardás un "Tanque lleno" que cierra el ciclo (el momento natural).<br>
+          2️⃣ <b>Banner persistente</b> arriba del vehículo (lo de la izquierda) hasta que se resuelva → no se pierde.<br>
+          3️⃣ <b>Evento en el feed de Finanzas</b> como registro histórico.
+        </div>
+      </div>
+    </div>
+
+  </div>
+  <p class="note" style="margin-top:30px">Mockups conceptuales — sistema de diseño real de Naftómetro (glassmorphism). Valores ilustrativos basados en datos reales del vehículo Taos Hermanos Mc.</p>
+</div>
+</body>
+</html>

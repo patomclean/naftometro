@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Naftómetro — Cargar Nafta · Variantes UX/UI</title>
+<style>
+  :root{
+    --color-primary:#7c5cfc; --color-primary-hover:#6a4ae0; --color-primary-light:rgba(124,92,252,.15);
+    --color-danger:#ef4444; --color-success:#22c55e; --color-warning:#f59e0b;
+    --bg-gradient-start:#0f0c29; --bg-gradient-mid:#1a1440; --bg-gradient-end:#24243e;
+    --glass-bg:rgba(255,255,255,.06); --glass-border:rgba(255,255,255,.1); --glass-blur:12px;
+    --text-primary:#f1f1f1; --text-secondary:#a0a0b8; --text-muted:#6b6b80;
+    --radius-sm:8px; --radius-md:12px; --radius-lg:16px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}
+  body{background:linear-gradient(135deg,var(--bg-gradient-start),var(--bg-gradient-mid),var(--bg-gradient-end));color:var(--text-primary);min-height:100vh;padding:24px;line-height:1.5}
+  .page{max-width:1200px;margin:0 auto}
+  .page > h1{font-size:1.6rem;margin-bottom:4px;background:linear-gradient(135deg,#fff,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+  .page > .sub{color:var(--text-secondary);margin-bottom:30px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:30px;align-items:start}
+  .mock h2{font-size:1rem;color:var(--color-primary);margin-bottom:2px}
+  .mock .tag{display:inline-block;font-size:.68rem;background:var(--color-primary-light);border:1px solid rgba(124,92,252,.35);color:#cbb9ff;padding:2px 8px;border-radius:20px;margin-bottom:8px}
+  .mock .desc{color:var(--text-secondary);font-size:.84rem;margin-bottom:12px}
+  .pros{font-size:.76rem;color:var(--text-secondary);margin-top:10px;background:rgba(255,255,255,.03);border:1px solid var(--glass-border);border-radius:var(--radius-md);padding:10px 12px}
+  .pros b{color:var(--text-primary)}
+  .phone{background:#05030f;border:8px solid #0a0820;border-radius:34px;padding:16px;box-shadow:0 20px 60px rgba(0,0,0,.5)}
+  .glass{background:var(--glass-bg);backdrop-filter:blur(var(--glass-blur));-webkit-backdrop-filter:blur(var(--glass-blur));border:1px solid var(--glass-border);border-radius:var(--radius-lg);padding:16px}
+  .mtitle{display:flex;align-items:center;gap:8px;font-size:1.1rem;font-weight:700}
+  .msub{color:var(--text-secondary);font-size:.8rem;margin-bottom:14px}
+  .label{font-size:.78rem;color:var(--text-secondary);margin-bottom:6px;display:block}
+  .opt{font-weight:400;color:var(--text-muted);font-size:.7rem}
+  .field{width:100%;background:rgba(255,255,255,.04);border:1px solid var(--glass-border);border-radius:var(--radius-md);padding:11px 12px;color:var(--text-primary);font-size:1rem;margin-bottom:12px}
+  .field-xl{font-size:1.7rem;font-weight:800;text-align:center;padding:14px}
+  .field-new{border-color:var(--color-primary);box-shadow:0 0 0 3px var(--color-primary-light)}
+  .badge-new{display:inline-block;background:var(--color-primary);color:#fff;font-size:.58rem;font-weight:700;padding:2px 6px;border-radius:6px;margin-left:4px}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .chips{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:12px}
+  .chip{background:rgba(255,255,255,.05);border:1px solid var(--glass-border);border-radius:20px;padding:7px 13px;font-size:.8rem;color:var(--text-secondary);cursor:pointer}
+  .chip.on{background:var(--color-primary);border-color:var(--color-primary);color:#fff;font-weight:600}
+  .seg{display:flex;background:rgba(255,255,255,.04);border:1px solid var(--glass-border);border-radius:var(--radius-md);padding:4px;margin-bottom:14px}
+  .seg div{flex:1;text-align:center;padding:8px;font-size:.82rem;color:var(--text-secondary);border-radius:9px;cursor:pointer}
+  .seg div.on{background:var(--color-primary);color:#fff;font-weight:600}
+  .toggle{display:flex;align-items:center;justify-content:space-between;background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.35);border-radius:var(--radius-md);padding:11px 12px;margin-bottom:12px}
+  .toggle.off{background:rgba(255,255,255,.03);border-color:var(--glass-border)}
+  .sw{width:42px;height:24px;background:var(--color-success);border-radius:20px;position:relative;flex-shrink:0}
+  .sw::after{content:'';position:absolute;width:18px;height:18px;background:#fff;border-radius:50%;top:3px;right:3px}
+  .sw.off{background:rgba(255,255,255,.15)} .sw.off::after{right:auto;left:3px}
+  .btn{width:100%;background:var(--color-primary);color:#fff;border:none;border-radius:var(--radius-md);padding:14px;font-size:1rem;font-weight:700;cursor:pointer;margin-top:4px}
+  .more{display:flex;align-items:center;justify-content:space-between;color:var(--text-secondary);font-size:.85rem;padding:11px 0;border-top:1px solid var(--glass-border);border-bottom:1px solid var(--glass-border);margin-bottom:12px;cursor:pointer}
+  .datechip{display:flex;align-items:center;gap:8px;font-size:.8rem;color:var(--text-secondary);margin-bottom:12px}
+  .datechip b{color:var(--text-primary)}
+  .link{color:var(--color-primary);font-size:.78rem;cursor:pointer}
+  .dropzone{border:1.5px dashed var(--glass-border);border-radius:var(--radius-md);padding:22px;text-align:center;color:var(--text-secondary);font-size:.85rem;margin-bottom:12px}
+  .dropzone .big{font-size:1.6rem;display:block;margin-bottom:4px}
+  .thumb{display:flex;align-items:center;gap:10px;background:rgba(255,255,255,.04);border:1px solid var(--glass-border);border-radius:var(--radius-md);padding:8px;margin-bottom:12px}
+  .thumb .img{width:48px;height:48px;border-radius:8px;background:linear-gradient(135deg,#3a3a5e,#1a1440);display:flex;align-items:center;justify-content:center;font-size:1.1rem}
+  .thumb .x{margin-left:auto;color:var(--text-muted);cursor:pointer;padding:6px}
+  .sum{border:1px dashed rgba(255,255,255,.18);border-radius:var(--radius-md);padding:10px 12px;font-size:.78rem;margin-bottom:12px}
+  .sum .r{display:flex;justify-content:space-between;padding:3px 0;color:var(--text-secondary)}
+  .sum .r b{color:var(--text-primary)}
+  .sum .r.hi b{color:var(--color-success)}
+  .check{display:flex;gap:9px;align-items:flex-start;margin-bottom:12px}
+  .check .box{width:18px;height:18px;border:1px solid var(--glass-border);border-radius:5px;flex-shrink:0;margin-top:2px}
+  .check .box.on{background:var(--color-primary);border-color:var(--color-primary);position:relative}
+  .check .box.on::after{content:'✓';position:absolute;color:#fff;font-size:.7rem;top:-1px;left:3px}
+  .galsec{margin-top:42px}
+  .galsec > h2{font-size:1.15rem;margin-bottom:4px}
+  .galsec > .desc{color:var(--text-secondary);margin-bottom:20px}
+  .galgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:22px}
+  .gcard{background:var(--glass-bg);border:1px solid var(--glass-border);border-radius:var(--radius-lg);padding:16px}
+  .gcard h3{font-size:.85rem;color:var(--color-primary);margin-bottom:3px}
+  .gcard .opt2{font-size:.72rem;color:var(--text-muted);margin-bottom:12px}
+  .opt-block{margin-bottom:16px}
+  .opt-block .name{font-size:.74rem;color:var(--text-secondary);margin-bottom:7px;display:flex;justify-content:space-between}
+  .opt-block .name .rec{color:var(--color-success);font-size:.68rem}
+  .note{font-size:.74rem;color:var(--text-muted);margin-top:14px}
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>Cargar Nafta — Exploración UX/UI</h1>
+  <p class="sub">3 variantes del modal + galería de variaciones por campo · sistema de diseño real de Naftómetro</p>
+
+  <div class="grid">
+
+    <!-- ===== VARIANTE 1: EXPRESS ===== -->
+    <div class="mock">
+      <h2>1 · Express</h2>
+      <span class="tag">⚡ La más rápida</span>
+      <p class="desc">Lo esencial arriba (90% de los casos), el resto plegado. Para cargar parado en la estación en 5 segundos.</p>
+      <div class="phone">
+        <div class="glass">
+          <div class="mtitle">⛽ Cargar Nafta</div>
+          <div class="msub">Taos · PAPÁ</div>
+
+          <label class="label">¿Cuánto pagaste?</label>
+          <input class="field field-xl" value="$79.995" readonly>
+          <div class="chips"><span class="chip">+5.000</span><span class="chip">+10.000</span><span class="chip">+20.000</span><span class="chip on">Llené el tanque</span></div>
+
+          <div class="two">
+            <div><label class="label">Litros</label><input class="field" value="32,5" readonly></div>
+            <div><label class="label">$ / litro</label><input class="field" value="2.461" readonly></div>
+          </div>
+
+          <div class="toggle"><div><strong>🔋 Tanque lleno</strong></div><div class="sw"></div></div>
+
+          <div class="more"><span>⚙️ Más opciones <span class="opt">(Factura A, foto, odómetro…)</span></span><span>▾</span></div>
+
+          <div class="datechip">🕓 <b>Hoy 16:08</b> <span class="link">· cambiar</span></div>
+
+          <button class="btn">Registrar carga</button>
+        </div>
+      </div>
+      <div class="pros"><b>✓ Pro:</b> rapidísima, 1 dato obligatorio. <b>✗ Contra:</b> esconde Factura A/foto (1 toque extra para power users).</div>
+    </div>
+
+    <!-- ===== VARIANTE 2: POR SECCIONES ===== -->
+    <div class="mock">
+      <h2>2 · Por secciones</h2>
+      <span class="tag">🗂️ Ordenada</span>
+      <p class="desc">Pestañas internas por propósito. Todo visible pero agrupado, sin scroll infinito.</p>
+      <div class="phone">
+        <div class="glass">
+          <div class="mtitle">⛽ Cargar Nafta</div>
+          <div class="msub">Taos · PAPÁ</div>
+
+          <div class="seg"><div class="on">Básico</div><div>Comprobante</div><div>Detalles</div></div>
+
+          <label class="label">Monto total ($)</label>
+          <input class="field" value="79.995" readonly>
+          <div class="two">
+            <div><label class="label">Litros</label><input class="field" value="32,5" readonly></div>
+            <div><label class="label">$ / litro</label><input class="field" value="2.461" readonly></div>
+          </div>
+          <div class="toggle"><div><strong>🔋 Tanque lleno</strong></div><div class="sw"></div></div>
+
+          <button class="btn">Registrar carga</button>
+        </div>
+      </div>
+      <div class="pros"><b>✓ Pro:</b> todo accesible y ordenado. <b>✗ Contra:</b> hay que saber en qué pestaña está cada cosa.</div>
+    </div>
+
+    <!-- ===== VARIANTE 3: VISUAL ===== -->
+    <div class="mock">
+      <h2>3 · Visual</h2>
+      <span class="tag">🎨 La más linda</span>
+      <p class="desc">Chips y toggles en vez de campos sueltos. Comprobante y fecha como botones, foto como zona grande.</p>
+      <div class="phone">
+        <div class="glass">
+          <div class="mtitle">⛽ Cargar Nafta</div>
+          <div class="msub">Taos · PAPÁ</div>
+
+          <label class="label">Tipo de comprobante</label>
+          <div class="chips"><span class="chip on">🧾 Ticket</span><span class="chip">📄 Factura A</span></div>
+
+          <label class="label">¿Cuánto pagaste?</label>
+          <input class="field field-xl" value="$79.995" readonly>
+          <div class="two">
+            <div><label class="label">Litros</label><input class="field" value="32,5" readonly></div>
+            <div><label class="label">$ / litro</label><input class="field" value="2.461" readonly></div>
+          </div>
+
+          <label class="label">¿Cuándo?</label>
+          <div class="chips"><span class="chip on">Hoy</span><span class="chip">Ayer</span><span class="chip">Otra fecha</span></div>
+
+          <label class="label">Foto del ticket <span class="opt">· opcional</span></label>
+          <div class="dropzone"><span class="big">📷</span>Tocá para sacar o subir</div>
+
+          <div class="toggle"><div><strong>🔋 Tanque lleno</strong></div><div class="sw"></div></div>
+          <button class="btn">Registrar carga</button>
+        </div>
+      </div>
+      <div class="pros"><b>✓ Pro:</b> moderna, menos "formulario". <b>✗ Contra:</b> ocupa más alto (más scroll).</div>
+    </div>
+
+  </div>
+
+  <!-- ============ GALERIA DE VARIACIONES POR CAMPO ============ -->
+  <div class="galsec">
+    <h2>🔧 Variaciones por campo</h2>
+    <p class="desc">Distintas formas de resolver cada campo. Se pueden mezclar entre variantes.</p>
+    <div class="galgrid">
+
+      <!-- FECHA -->
+      <div class="gcard">
+        <h3>📅 Fecha y hora</h3>
+        <div class="opt2">Hoy es un date-picker que casi siempre es "ahora".</div>
+        <div class="opt-block">
+          <div class="name"><span>A · Smart default</span><span class="rec">recomendada</span></div>
+          <div class="datechip">🕓 <b>Hoy 16:08</b> <span class="link">· cambiar</span></div>
+        </div>
+        <div class="opt-block">
+          <div class="name">B · Chips rápidos</div>
+          <div class="chips"><span class="chip on">Hoy</span><span class="chip">Ayer</span><span class="chip">Otra</span></div>
+        </div>
+        <div class="opt-block">
+          <div class="name">C · Picker completo (actual)</div>
+          <input class="field" value="14/06/2026 16:08" readonly style="margin:0">
+        </div>
+      </div>
+
+      <!-- COMPROBANTE -->
+      <div class="gcard">
+        <h3>🧾 Factura A / Descuento</h3>
+        <div class="opt2">Lo que cambia el precio efectivo del tanque.</div>
+        <div class="opt-block">
+          <div class="name"><span>A · Toggle segmentado</span><span class="rec">recomendada</span></div>
+          <div class="seg" style="margin:0 0 10px"><div class="on">🧾 Ticket</div><div>📄 Factura A</div></div>
+          <div class="sum"><div class="r"><span>Pagaste</span><b>$79.995</b></div><div class="r hi"><span>Precio efectivo</span><b>$2.461/L</b></div></div>
+        </div>
+        <div class="opt-block">
+          <div class="name">B · Checkbox + descuento (actual)</div>
+          <div class="check"><div class="box on"></div><div style="font-size:.8rem">Factura A <span class="opt">(+ percepciones)</span></div></div>
+          <input class="field" placeholder="Descuento/Reintegro ($)" readonly style="margin:0">
+        </div>
+      </div>
+
+      <!-- FOTO -->
+      <div class="gcard">
+        <h3>📷 Foto del ticket</h3>
+        <div class="opt2">Evidencia opcional de la carga.</div>
+        <div class="opt-block">
+          <div class="name"><span>A · Dropzone grande</span><span class="rec">recomendada</span></div>
+          <div class="dropzone" style="padding:18px"><span class="big">📷</span>Tocá para sacar o subir</div>
+        </div>
+        <div class="opt-block">
+          <div class="name">B · Miniatura (ya cargada)</div>
+          <div class="thumb"><div class="img">🧾</div><div style="font-size:.8rem">ticket_1608.jpg<div style="font-size:.7rem;color:var(--text-muted)">subida ✓</div></div><span class="x">✕</span></div>
+        </div>
+        <div class="opt-block">
+          <div class="name">C · Botón chico (actual)</div>
+          <div class="dropzone" style="padding:11px;border-style:solid">📷 Adjuntar Ticket</div>
+        </div>
+      </div>
+
+      <!-- MONTO -->
+      <div class="gcard">
+        <h3>💵 Monto / Litros</h3>
+        <div class="opt2">El auto-cálculo: con 2 datos completa el tercero.</div>
+        <div class="opt-block">
+          <div class="name"><span>A · Monto protagonista + chips</span><span class="rec">recomendada</span></div>
+          <input class="field field-xl" value="$79.995" readonly style="margin-bottom:8px">
+          <div class="chips" style="margin:0"><span class="chip">+5.000</span><span class="chip">+10.000</span><span class="chip on">Llené</span></div>
+        </div>
+        <div class="opt-block">
+          <div class="name">B · Modo distraído (solo monto)</div>
+          <input class="field" value="79.995" readonly style="margin-bottom:6px">
+          <div style="font-size:.74rem;color:var(--text-secondary)">📊 Estimamos ~32,5 L a $2.461/L</div>
+        </div>
+      </div>
+
+    </div>
+    <p class="note">Mockups conceptuales — todas las variantes mantienen el odómetro opcional y el costo efectivo al pool (ver doc 05).</p>
+  </div>
+
+</div>
+</body>
+</html>

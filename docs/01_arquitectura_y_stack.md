@@ -5,7 +5,7 @@
 Naftometro es una Progressive Web App (PWA) para calcular y distribuir costos de combustible entre multiples conductores que comparten un vehiculo. Desarrollada en Vanilla JS sin frameworks, esta optimizada para funcionar como app nativa en iPhone y Android.
 
 **Repositorio:** github.com/patomclean/naftometro
-**Version actual:** v18.15
+**Version actual:** v18.18
 **Deploy:** Vercel (auto-deploy desde rama `main`)
 
 ---
@@ -33,7 +33,7 @@ Naftometro es una Progressive Web App (PWA) para calcular y distribuir costos de
 ### Deploy y CI/CD
 - **Vercel** — Auto-deploy desde GitHub en cada push a `main`
 - **vercel.json** — Configuracion de rutas y reescrituras para SPA
-- **Cache busting** — Query strings en assets (`style.css?v=18.15`, `app.js?v=18.15`)
+- **Cache busting** — Query strings en assets (`style.css?v=18.18`, `app.js?v=18.18`)
 
 ---
 
@@ -56,6 +56,8 @@ fuel-calculator/
     02_logica_de_negocio.md     — Matematica y algoritmos
     03_historial_y_ui.md        — Evolucion de la interfaz y versiones
     04_esquema_supabase.md      — Esquema completo de base de datos
+    05_modelo_financiero_v2.md  — Diseño del modelo "pool a costo" (NO implementado)
+    mockups/                    — Mockups HTML del rediseño (Cargar Nafta, modelo v2)
   supabase_v16_migration.sql    — Multi-tenant, vehicle_members, RLS
   v16.2_invitations.sql         — Codigos de invitacion, join_vehicle_by_code RPC
   v17.0_ledger_schema.sql       — Libro contable inmutable, columnas PPP
@@ -358,7 +360,7 @@ Assets estaticos (HTML, CSS, JS, iconos) → Cache-first (fallback a network)
 
 ### Versionado
 
-El nombre del cache (`naftometro-v18.15`) se bumpeea en cada release. Combinado con cache busting en `index.html` (`?v=18.15`), esto fuerza la actualizacion de assets en produccion.
+El nombre del cache (`naftometro-v18.18`) se bumpeea en cada release. Combinado con cache busting en `index.html` (`?v=18.18`), esto fuerza la actualizacion de assets en produccion.
 
 ---
 
