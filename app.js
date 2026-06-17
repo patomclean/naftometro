@@ -1,4 +1,4 @@
-console.log("🚀 Naftómetro v18.20 cargado correctamente");
+console.log("🚀 Naftómetro v18.21 cargado correctamente");
 
 // ============================================================
 // 1. CONSTANTS & CONFIGURATION
@@ -148,6 +148,8 @@ const dom = {
   vehicleLearnedBadge: $('#vehicle-learned-badge'),
   tripForm: $('#trip-form'),
   tripDriver: $('#trip-driver'),
+  tripDriverAv: $('#trip-driver-av'),
+  tripDriverName: $('#trip-driver-name'),
   tripKm: $('#trip-km'),
   tripNote: $('#trip-note'),
   costPreviewValue: $('#cost-preview-value'),
@@ -202,6 +204,8 @@ const dom = {
   paymentModal: $('#payment-modal'),
   paymentForm: $('#payment-form'),
   paymentDriver: $('#payment-driver'),
+  paymentDriverAv: $('#payment-driver-av'),
+  paymentDriverName: $('#payment-driver-name'),
   paymentAmount: $('#payment-amount'),
   paymentLiters: $('#payment-liters'),
   paymentPricePerLiter: $('#payment-price-per-liter'),
@@ -1469,6 +1473,26 @@ function renderDriverSelect(drivers) {
     opt.textContent = name;
     dom.tripDriver.appendChild(opt);
   });
+}
+
+// v18.21: Sincroniza el pill visible (avatar de color + nombre) con el <select> nativo
+function renderDriverPill(selectEl, avEl, nameEl) {
+  if (!selectEl || !avEl || !nameEl) return;
+  const val = selectEl.value;
+  if (!val) {
+    avEl.textContent = '?';
+    avEl.style.background = 'rgba(255,255,255,0.15)';
+    nameEl.textContent = 'Elegir piloto';
+    nameEl.classList.add('cn-driver-empty');
+    return;
+  }
+  const vehicle = getActiveVehicle();
+  const drivers = (vehicle && vehicle.drivers) || [];
+  const idx = drivers.indexOf(val);
+  avEl.textContent = val.charAt(0).toUpperCase();
+  avEl.style.background = PILOT_COLORS[idx >= 0 ? idx % PILOT_COLORS.length : 0];
+  nameEl.textContent = val;
+  nameEl.classList.remove('cn-driver-empty');
 }
 
 // v15.1: Determine if trip is truly verified (has a full-tank payment after it)
@@ -2938,14 +2962,14 @@ function openPaymentModal(editId) {
       toggleHidden(dom.photoPreview, false);
       toggleHidden(dom.btnCapturePhoto, true);
     }
-    $('#payment-modal-title').textContent = 'Editar carga';
+    $('#payment-modal-title').textContent = '⛽ Editar carga';
     const btnText = dom.btnSubmitPayment.querySelector('.btn-text');
     if (btnText) btnText.textContent = 'Guardar cambios';
     updatePaymentPriceSummary();
   } else {
     const btnText = dom.btnSubmitPayment.querySelector('.btn-text');
     if (btnText) btnText.textContent = 'Registrar carga';
-    $('#payment-modal-title').textContent = 'Cargar Nafta';
+    $('#payment-modal-title').textContent = '⛽ Cargar Nafta';
     // v14.6: Default occurred_at to now
     dom.paymentOccurredAt.value = toLocalDatetimeValue();
     // v18: Auto-select logged-in user's driver
@@ -2958,6 +2982,7 @@ function openPaymentModal(editId) {
   if (dom.btnChangeDate) toggleHidden(dom.btnChangeDate, false);
   renderPaymentDateDisplay();
   updatePaymentCtaAmount();
+  renderDriverPill(dom.paymentDriver, dom.paymentDriverAv, dom.paymentDriverName); // v18.21
 
   toggleHidden(dom.paymentModal, false);
 }
@@ -2994,7 +3019,7 @@ function openTripModal(editTrip) {
     }
     if (dom.tripRoundTrip) dom.tripRoundTrip.checked = false; // v18.19
     handleTripKmInput();
-    dom.tripModalTitle.textContent = 'Editar viaje';
+    dom.tripModalTitle.textContent = '🚗 Editar viaje';
     dom.btnSubmitTrip.querySelector('.btn-text').textContent = 'Guardar cambios';
   } else {
     state.editingTripId = null;
@@ -3006,7 +3031,7 @@ function openTripModal(editTrip) {
     if (dom.tripRoundTrip) dom.tripRoundTrip.checked = false; // v18.19
     dom.costPreviewValue.textContent = '$0,00';
     toggleHidden(dom.costPreview, true);
-    dom.tripModalTitle.textContent = 'Registrar viaje';
+    dom.tripModalTitle.textContent = '🚗 Registrar viaje';
     dom.btnSubmitTrip.querySelector('.btn-text').textContent = 'Registrar viaje';
     // v18: Auto-select logged-in user's driver
     const myDriver = getMyDriverName(vehicle.id);
@@ -3017,6 +3042,7 @@ function openTripModal(editTrip) {
   if (dom.btnChangeTripDate) toggleHidden(dom.btnChangeTripDate, false);
   renderTripDateDisplay();
   updateTripCtaKm();
+  renderDriverPill(dom.tripDriver, dom.tripDriverAv, dom.tripDriverName); // v18.21
   // v18.20: viajes frecuentes del piloto seleccionado (no se muestran al editar)
   renderFrequentTrips(editTrip ? null : dom.tripDriver.value);
   toggleHidden(dom.tripModal, false);
@@ -3492,6 +3518,27 @@ function handleDeletePayment(payment) {
 
 // --- Trip Form ---
 
+// v18.21: infiere un emoji del texto de la nota (con fallback). Las claves
+// destino tienen prioridad sobre "ida y vuelta" (ej: "Ida y vuelta Oficina" -> oficina)
+function tripNoteEmoji(note) {
+  const n = (note || '').toLowerCase();
+  const rules = [
+    [/\b(trabajo|oficina|laburo|chamba)\b/, '🏢'],
+    [/\b(casa|hogar|depto|departamento)\b/, '🏠'],
+    [/\b(novi[ao]|pareja|suegr)/, '❤️'],
+    [/\b(costa|playa|mar|balneario)\b/, '🏖️'],
+    [/\b(gimnasio|gym)\b/, '🏋️'],
+    [/\b(rugby|f[uú]tbol|futbol|cancha|club|partido|entrenamiento)\b/, '⚽'],
+    [/\b(super|mercado|compras|chino|almac[eé]n)\b/, '🛒'],
+    [/\b(aeropuerto|vuelo)\b/, '✈️'],
+    [/\b(facultad|universidad|colegio|escuela|cursada|uni)\b/, '🎓'],
+    [/\b(m[eé]dico|doctor|hospital|cl[ií]nica|turno)\b/, '🏥'],
+    [/\b(ida y vuelta|i\/v| \+ vuelta)\b/, '🔁'],
+  ];
+  for (const [re, emo] of rules) { if (re.test(n)) return emo; }
+  return '📍';
+}
+
 // v18.20: Viajes frecuentes — personalizado por piloto (los viajes de uno
 // no le sirven a otro: la novia de Pato no es el trabajo de Marcos)
 function renderFrequentTrips(driver) {
@@ -3517,7 +3564,7 @@ function renderFrequentTrips(driver) {
   if (frequent.length === 0) { toggleHidden(dom.frequentTrips, true); return; }
 
   dom.frequentTripsChips.innerHTML = frequent
-    .map(g => `<button type="button" class="cn-freq-chip" data-km="${g.km}" data-note="${g.note.replace(/"/g, '&quot;')}" data-drive="${g.driveType}">${g.note} &middot; ${g.km} km</button>`)
+    .map(g => `<button type="button" class="cn-freq-chip" data-km="${g.km}" data-note="${g.note.replace(/"/g, '&quot;')}" data-drive="${g.driveType}">${tripNoteEmoji(g.note)} ${g.note} &middot; ${g.km} km</button>`)
     .join('');
   toggleHidden(dom.frequentTrips, false);
 }
@@ -4140,8 +4187,15 @@ function bindEvents() {
   }
   // v18.20: Viajes frecuentes — re-render al cambiar piloto, autocompletar al tocar un chip
   dom.tripDriver.addEventListener('change', () => {
+    renderDriverPill(dom.tripDriver, dom.tripDriverAv, dom.tripDriverName); // v18.21
     if (!state.editingTripId) renderFrequentTrips(dom.tripDriver.value);
   });
+  // v18.21: pill de piloto en Cargar Nafta
+  if (dom.paymentDriver) {
+    dom.paymentDriver.addEventListener('change', () => {
+      renderDriverPill(dom.paymentDriver, dom.paymentDriverAv, dom.paymentDriverName);
+    });
+  }
   if (dom.frequentTripsChips) {
     dom.frequentTripsChips.addEventListener('click', (e) => {
       const chip = e.target.closest('.cn-freq-chip');

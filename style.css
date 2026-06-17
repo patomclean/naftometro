@@ -2793,3 +2793,24 @@ input[type="datetime-local"] {
 .cn-freq-chips { display: flex; gap: 7px; flex-wrap: wrap; }
 .cn-freq-chip { background: rgba(124,92,252,0.10); border: 1px solid rgba(124,92,252,0.3); border-radius: 20px; padding: 7px 12px; font-size: 0.78rem; color: #cbb9ff; cursor: pointer; transition: all var(--transition); }
 .cn-freq-chip:active { background: var(--color-primary); color: #fff; }
+
+/* v18.21 — Piloto como pill compacto (avatar + nombre + caret), select nativo overlay */
+.cn-driver-row { display: flex; justify-content: flex-end; margin-bottom: 12px; }
+.cn-driver-pill {
+  position: relative; display: inline-flex; align-items: center; gap: 6px;
+  background: rgba(255,255,255,0.05); border: 1px solid var(--glass-border);
+  border-radius: 20px; padding: 3px 11px 3px 3px; font-size: 0.82rem; cursor: pointer;
+}
+.cn-driver-av {
+  width: 24px; height: 24px; border-radius: 50%; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.7rem; font-weight: 700; color: #fff; background: var(--color-primary);
+}
+.cn-driver-name { color: var(--text-primary); font-weight: 600; }
+.cn-driver-name.cn-driver-empty { color: var(--text-secondary); font-weight: 500; }
+.cn-driver-caret { color: var(--text-muted); font-size: 0.7rem; }
+.cn-driver-select {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  min-height: 0; padding: 0; margin: 0; border: none; background: transparent;
+  opacity: 0; cursor: pointer; -webkit-appearance: none; appearance: none;
+}

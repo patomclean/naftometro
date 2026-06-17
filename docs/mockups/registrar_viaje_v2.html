@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Naftómetro — Registrar Viaje v2</title>
+<style>
+  :root{
+    --color-primary:#7c5cfc; --color-primary-light:rgba(124,92,252,.15);
+    --color-danger:#ef4444; --color-success:#22c55e; --color-warning:#f59e0b; --color-cyan:#06b6d4;
+    --bg-gradient-start:#0f0c29; --bg-gradient-mid:#1a1440; --bg-gradient-end:#24243e;
+    --glass-bg:rgba(255,255,255,.06); --glass-border:rgba(255,255,255,.1);
+    --text-primary:#f1f1f1; --text-secondary:#a0a0b8; --text-muted:#6b6b80;
+    --radius-md:12px; --radius-lg:16px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}
+  body{background:linear-gradient(135deg,var(--bg-gradient-start),var(--bg-gradient-mid),var(--bg-gradient-end));color:var(--text-primary);min-height:100vh;padding:26px;line-height:1.5}
+  .page{max-width:1100px;margin:0 auto}
+  h1{font-size:1.55rem;background:linear-gradient(135deg,#fff,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:4px}
+  .sub{color:var(--text-secondary);margin-bottom:28px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:30px;align-items:start}
+  .col h2{font-size:1rem;color:var(--color-primary);margin-bottom:3px}
+  .col .d{color:var(--text-secondary);font-size:.84rem;margin-bottom:12px}
+  .phone{background:#05030f;border:8px solid #0a0820;border-radius:32px;padding:16px;box-shadow:0 18px 50px rgba(0,0,0,.45)}
+  .mtitle{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+  .mtitle .t{font-size:1.1rem;font-weight:700}
+  .x{color:var(--text-muted)}
+  .driver{display:flex;align-items:center;gap:6px;background:rgba(255,255,255,.05);border:1px solid var(--glass-border);border-radius:20px;padding:3px 9px 3px 3px;font-size:.78rem}
+  .driver .av{width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.68rem;font-weight:700;color:#fff;background:#7c5cfc}
+  .label{font-size:.74rem;color:var(--text-secondary);margin-bottom:7px;display:block;margin-top:4px}
+  .opt{color:var(--text-muted);font-weight:400;font-size:.7rem}
+  /* hero km */
+  .hero{text-align:center;background:rgba(124,92,252,.08);border:1px solid rgba(124,92,252,.25);border-radius:var(--radius-lg);padding:16px;margin-bottom:12px}
+  .hero .l{font-size:.7rem;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.06em;margin-bottom:2px}
+  .hero .a{font-size:2.2rem;font-weight:800}
+  .hero .a .u{color:var(--text-muted);font-size:1.1rem;font-weight:600;margin-left:4px}
+  /* toggle ida-vuelta */
+  .iv{display:flex;align-items:center;justify-content:space-between;background:rgba(124,92,252,.08);border:1px solid rgba(124,92,252,.25);border-radius:var(--radius-md);padding:10px 12px;margin-bottom:12px}
+  .iv .s{font-size:.7rem;color:var(--text-secondary)}
+  .sw{width:42px;height:24px;background:rgba(255,255,255,.15);border-radius:20px;position:relative;flex-shrink:0}
+  .sw.on{background:var(--color-primary)} .sw::after{content:'';position:absolute;width:18px;height:18px;background:#fff;border-radius:50%;top:3px;left:3px;transition:left .2s} .sw.on::after{left:21px}
+  /* fecha */
+  .date{display:flex;align-items:center;gap:7px;font-size:.8rem;color:var(--text-secondary);margin-bottom:12px}
+  .date b{color:var(--text-primary)} .link{color:var(--color-primary);margin-left:auto;cursor:pointer}
+  .field{width:100%;background:rgba(255,255,255,.04);border:1px solid var(--glass-border);border-radius:var(--radius-md);padding:10px 12px;color:var(--text-primary);font-size:.95rem;margin-bottom:12px}
+  /* segmented drive type */
+  .seg{display:flex;gap:7px;margin-bottom:12px}
+  .seg-btn{flex:1;text-align:center;background:rgba(255,255,255,.04);border:1px solid var(--glass-border);border-radius:var(--radius-md);padding:9px 4px;cursor:pointer}
+  .seg-btn.on{background:var(--color-primary);border-color:var(--color-primary)}
+  .seg-btn .ic{font-size:1rem} .seg-btn .nm{font-size:.8rem;font-weight:600;display:block;margin-top:1px}
+  .seg-btn .ds{font-size:.62rem;color:var(--text-muted);display:block}
+  .seg-btn.on .ds{color:rgba(255,255,255,.7)}
+  /* cost preview */
+  .cost{border:1px solid var(--glass-border);border-radius:var(--radius-md);padding:12px;background:rgba(255,255,255,.02);margin-bottom:14px}
+  .cost .flow{display:flex;align-items:center;justify-content:center;gap:8px;font-size:.82rem;color:var(--text-secondary);margin-bottom:6px}
+  .cost .flow b{color:var(--text-primary)}
+  .cost .big{text-align:center;font-size:1.5rem;font-weight:800;color:var(--color-primary)}
+  .cost .src{text-align:center;font-size:.68rem;color:var(--text-muted);margin-top:2px}
+  .btn{width:100%;background:var(--color-primary);color:#fff;border:none;border-radius:var(--radius-md);padding:13px;font-size:.95rem;font-weight:700;display:flex;justify-content:center;gap:8px}
+  .btn .b2{opacity:.75;font-weight:600}
+  /* extras panel */
+  .extras{background:var(--glass-bg);border:1px solid var(--glass-border);border-radius:var(--radius-lg);padding:18px}
+  .extras h3{font-size:.95rem;color:var(--color-warning);margin-bottom:4px}
+  .extras .note{font-size:.8rem;color:var(--text-secondary);margin-bottom:16px}
+  .ex{margin-bottom:18px;padding-bottom:16px;border-bottom:1px solid rgba(255,255,255,.06)}
+  .ex:last-child{border:none;margin-bottom:0;padding-bottom:0}
+  .ex .h{font-size:.85rem;font-weight:600;margin-bottom:8px;display:flex;gap:8px;align-items:center}
+  .ex .tag{font-size:.6rem;padding:2px 7px;border-radius:20px;background:rgba(124,92,252,.18);border:1px solid rgba(124,92,252,.35);color:#cbb9ff}
+  .ex .why{font-size:.76rem;color:var(--text-secondary);margin-top:8px}
+  .chips{display:flex;gap:7px;flex-wrap:wrap}
+  .chip{background:rgba(255,255,255,.05);border:1px solid var(--glass-border);border-radius:20px;padding:6px 11px;font-size:.76rem;color:var(--text-secondary)}
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>Registrar Viaje — Rediseño (A + B)</h1>
+  <p class="sub">Mismo lenguaje que Cargar Nafta · km héroe, fecha "cambiar", segmentado, costo en vivo, CTA con valor</p>
+
+  <div class="grid">
+
+    <!-- MAIN MODAL (A+B) -->
+    <div class="col">
+      <h2>Modal rediseñado (Puntos A + B)</h2>
+      <p class="d">Consistente con Cargar Nafta. El costo estimado pasa a ser un preview que da confianza.</p>
+      <div class="phone">
+        <div class="mtitle"><span class="t">🚗 Registrar Viaje</span><span class="x">&times;</span></div>
+        <div style="display:flex;justify-content:flex-end;margin-bottom:10px"><span class="driver"><span class="av">P</span>Pato ▾</span></div>
+
+        <!-- A1: km hero -->
+        <div class="hero">
+          <div class="l">Kilómetros recorridos</div>
+          <div class="a">190<span class="u">km</span></div>
+        </div>
+
+        <!-- C5 (opcional, lo muestro tenue): ida y vuelta -->
+        <div class="iv">
+          <div><strong>🔁 Ida y vuelta</strong><div class="s">Duplica los km automáticamente</div></div>
+          <div class="sw"></div>
+        </div>
+
+        <!-- A4: tipo de manejo segmentado (con mini-desc = C6) -->
+        <label class="label">Tipo de manejo</label>
+        <div class="seg">
+          <div class="seg-btn"><span class="ic">🏙️</span><span class="nm">Urbano</span><span class="ds">ciudad, tráfico</span></div>
+          <div class="seg-btn on"><span class="ic">🛣️</span><span class="nm">Mixto</span><span class="ds">combinado</span></div>
+          <div class="seg-btn"><span class="ic">🏁</span><span class="nm">Ruta</span><span class="ds">autopista</span></div>
+        </div>
+
+        <!-- B: cost preview -->
+        <div class="cost">
+          <div class="flow">190 km <span style="color:var(--color-primary)">→</span> <b>~18,9 L</b> <span style="color:var(--color-primary)">→</span></div>
+          <div class="big">$46.643</div>
+          <div class="src">a $2.461/l · consumo Mixto (13,3 km/l)</div>
+        </div>
+
+        <!-- A2: fecha cambiar -->
+        <div class="date">🕓 <b>Hoy, 23:13</b> <span class="link">cambiar</span></div>
+
+        <label class="label">Nota <span class="opt">· opcional</span></label>
+        <input class="field" placeholder="Ej: Ida a la costa" readonly style="margin-bottom:14px">
+
+        <!-- A3: CTA con valor -->
+        <button class="btn">Registrar viaje <span class="b2">· 190 km</span></button>
+      </div>
+    </div>
+
+    <!-- EXTRAS (C/D) explained -->
+    <div class="col">
+      <h2>Extras opcionales — para entender C y D</h2>
+      <p class="d">Estos NO están en el modal base. Acá los ves para decidir el valor que aportan.</p>
+      <div class="extras">
+        <h3>🧩 Puntos C y D (a evaluar)</h3>
+        <p class="note">Cada uno con su valor y esfuerzo, para que elijas qué implementar.</p>
+
+        <div class="ex">
+          <div class="h">🔁 Ida y vuelta <span class="tag">C5 · bajo esfuerzo</span></div>
+          <div class="iv" style="margin:0"><div><strong>🔁 Ida y vuelta</strong><div class="s">90 km → 180 km</div></div><div class="sw on"></div></div>
+          <div class="why"><b>Valor:</b> el caso más común (vas y volvés) en un toque, sin cuenta mental ni typo. <b>Esfuerzo:</b> mínimo (solo UI, ×2 el km).</div>
+        </div>
+
+        <div class="ex">
+          <div class="h">📖 Tipo de manejo con descripción <span class="tag">C6 · bajo esfuerzo</span></div>
+          <div class="seg" style="margin:0">
+            <div class="seg-btn"><span class="ic">🏙️</span><span class="nm">Urbano</span><span class="ds">ciudad, tráfico</span></div>
+            <div class="seg-btn on"><span class="ic">🛣️</span><span class="nm">Mixto</span><span class="ds">combinado</span></div>
+            <div class="seg-btn"><span class="ic">🏁</span><span class="nm">Ruta</span><span class="ds">autopista</span></div>
+          </div>
+          <div class="why"><b>Valor:</b> el tipo de manejo define el consumo (Taos: Urbano 10,1 / Mixto 13,3 / Ruta 16,6 km/l). Elegir bien = costo más justo. La descripción reduce errores. <b>Esfuerzo:</b> mínimo (solo texto).</div>
+        </div>
+
+        <div class="ex">
+          <div class="h">📊 Prefill por odómetro <span class="tag">D8 · futuro (v2)</span></div>
+          <div class="hero" style="padding:10px;margin:0"><div class="l">Km (auto del odómetro)</div><div class="a" style="font-size:1.5rem">250<span class="u">km</span></div></div>
+          <div class="why"><b>Valor:</b> el km sale de la realidad física (resta de odómetros), no de la memoria → elimina viajes olvidados/mal cargados en el origen. <b>Esfuerzo:</b> alto — necesita el campo odómetro (migración) + el modelo v2.</div>
+        </div>
+
+        <div class="ex">
+          <div class="h">⭐ Viajes frecuentes <span class="tag">D9 · medio</span></div>
+          <div class="chips"><span class="chip">🏠 Casa→Trabajo · 25 km</span><span class="chip">🏖️ Costa · 380 km</span><span class="chip">🏉 Rugby · 18 km</span></div>
+          <div class="why"><b>Valor:</b> rutas repetidas en un toque (km + nota + tipo precargados). <b>Esfuerzo:</b> medio — derivar el top de rutas del historial.</div>
+        </div>
+
+      </div>
+    </div>
+
+  </div>
+</div>
+</body>
+</html>

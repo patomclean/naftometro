@@ -13,7 +13,7 @@
   <link rel="manifest" href="manifest.json">
   <link rel="apple-touch-icon" href="icons/icon-192.svg">
   <link rel="icon" type="image/svg+xml" href="icons/icon-192.svg">
-  <link rel="stylesheet" href="style.css?v=18.20">
+  <link rel="stylesheet" href="style.css?v=18.21">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 </head>
@@ -410,15 +410,20 @@
   <div id="payment-modal" class="modal-overlay hidden">
     <div class="modal glass-card modal-sm">
       <div class="modal-header">
-        <h3 id="payment-modal-title">Cargar Nafta</h3>
+        <h3 id="payment-modal-title">&#9981; Cargar Nafta</h3>
         <button id="btn-close-payment-modal" class="btn-icon">&times;</button>
       </div>
       <form id="payment-form">
-        <div class="form-group">
-          <label for="payment-driver">Piloto</label>
-          <select id="payment-driver" required>
-            <option value="">Seleccionar...</option>
-          </select>
+        <!-- v18.21: Piloto como pill compacto (avatar + nombre + caret), select nativo por encima -->
+        <div class="cn-driver-row">
+          <div class="cn-driver-pill">
+            <span class="cn-driver-av" id="payment-driver-av">?</span>
+            <span class="cn-driver-name" id="payment-driver-name">Elegir piloto</span>
+            <span class="cn-driver-caret">&#9662;</span>
+            <select id="payment-driver" class="cn-driver-select" required aria-label="Piloto">
+              <option value="">Seleccionar...</option>
+            </select>
+          </div>
         </div>
         <!-- v18.16: Hero amount -->
         <div class="cn-hero">
@@ -535,15 +540,20 @@
   <div id="trip-modal" class="modal-overlay hidden">
     <div class="modal glass-card modal-sm">
       <div class="modal-header">
-        <h3 id="trip-modal-title">Registrar viaje</h3>
+        <h3 id="trip-modal-title">&#128663; Registrar viaje</h3>
         <button id="btn-close-trip-modal" class="btn-icon">&times;</button>
       </div>
       <form id="trip-form">
-        <div class="form-group">
-          <label for="trip-driver">Piloto</label>
-          <select id="trip-driver" required>
-            <option value="">Seleccionar...</option>
-          </select>
+        <!-- v18.21: Piloto como pill compacto (avatar + nombre + caret), select nativo por encima -->
+        <div class="cn-driver-row">
+          <div class="cn-driver-pill">
+            <span class="cn-driver-av" id="trip-driver-av">?</span>
+            <span class="cn-driver-name" id="trip-driver-name">Elegir piloto</span>
+            <span class="cn-driver-caret">&#9662;</span>
+            <select id="trip-driver" class="cn-driver-select" required aria-label="Piloto">
+              <option value="">Seleccionar...</option>
+            </select>
+          </div>
         </div>
         <!-- v18.20: Viajes frecuentes (personalizado por piloto) -->
         <div id="frequent-trips" class="cn-freq hidden">
@@ -765,6 +775,6 @@
   <!-- Toast Container -->
   <div id="toast-container" class="toast-container"></div>
 
-  <script src="app.js?v=18.20"></script>
+  <script src="app.js?v=18.21"></script>
 </body>
 </html>
