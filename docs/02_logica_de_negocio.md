@@ -575,6 +575,25 @@ Y ese neto (`monto - descuento`) se usa tambien en:
 
 Solo afecta cargas CON descuento; las normales quedan identicas.
 
+### Ida y vuelta — km efectivo (v18.19)
+
+El modal de Registrar Viaje tiene un toggle **"Ida y vuelta"** que duplica los km. El km que se persiste es el **efectivo**, no el tipeado:
+
+```javascript
+function getEffectiveTripKm() {
+  const base = parseFloat(dom.tripKm.value) || 0;
+  return base * (dom.tripRoundTrip?.checked ? 2 : 1);
+}
+```
+
+`getEffectiveTripKm()` se usa tanto en el **preview de costo en vivo** (`handleTripKmInput()`) como en el **guardado** (`handleTripSubmit()`), asi que el costo estimado y el viaje real siempre coinciden.
+
+### Viajes frecuentes personalizados por piloto (v18.20-v18.21)
+
+`renderFrequentTrips(driver)` deriva los destinos repetidos **del historial de cada piloto por separado** (los viajes de uno no le sirven a otro). Agrupa `state.trips` del piloto por `(nota normalizada + km redondeado)`, filtra los que aparecen 2+ veces, ordena por frecuencia y muestra hasta 4 chips. Solo se consideran viajes **con nota** (los identificables). Click en un chip autocompleta km/nota/tipo de manejo y recalcula el costo.
+
+Desde v18.21, cada chip lleva un emoji inferido de la nota via `tripNoteEmoji(note)` (🏢 trabajo/oficina, 🏠 casa, 🏖️ costa, ❤️ novia, ⚽ deporte… fallback 📍; las claves destino tienen prioridad sobre "ida y vuelta"). El `data-note` del chip queda **limpio** (sin emoji) para no contaminar la nota guardada.
+
 ---
 
 ## 11. Activity Feed — Feed de Actividad (v18.5+)

@@ -2,7 +2,7 @@
 
 ## Linea de Tiempo del Proyecto
 
-El proyecto se desarrolla desde el 12 de febrero de 2026, con 40+ commits. La version actual es v18.18. La evolucion se organiza en fases:
+El proyecto se desarrolla desde el 12 de febrero de 2026, con 40+ commits. La version actual es v18.22. La evolucion se organiza en fases:
 
 ---
 
@@ -378,6 +378,34 @@ Rediseño del modal de carga al layout **"Express"** (diseño en `docs/05_modelo
 
 ---
 
+## Fase 10: Rediseño UX Registrar Viaje (Junio 2026, v18.19-v18.22)
+
+Se aplica al modal de viaje el mismo lenguaje "Express" de Cargar Nafta (mockup aprobado en `docs/mockups/registrar_viaje_v2.html`).
+
+### v18.19 — Express + ida/vuelta
+- **Km "heroe"**: campo grande y centrado con unidad "km" (`cn-hero`).
+- **Costo como preview que da confianza**: en vez de "Costo estimado: $0,00", muestra el flujo `X km → ~Y L → $Z` con la fuente (`a $P/l · consumo Mixto (13,3 km/l)`). Helper `handleTripKmInput()` reescrito.
+- **Ida y vuelta** (C5): toggle que duplica los km. `getEffectiveTripKm()` (×2) se usa en el preview **y** en el guardado (km real recorrido).
+- **Tipo de manejo segmentado con descripcion** (C6): Urbano (ciudad, trafico) / Mixto (combinado) / Ruta (autopista).
+- **Fecha** "Hoy, HH:MM · cambiar" y **CTA con km** ("Registrar viaje · 190 km"). Helpers `friendlyDate()`, `renderTripDateDisplay()`, `updateTripCtaKm()`.
+
+### v18.20 — Viajes frecuentes personalizados (D9)
+- Chips de "viajes frecuentes" **derivados del historial de CADA piloto por separado** (los viajes de uno no le sirven a otro: la novia de Pato no es el trabajo de Marcos).
+- `renderFrequentTrips(driver)`: agrupa `state.trips` del piloto por (nota normalizada + km redondeado), filtra los que se repitieron 2+ veces, ordena por frecuencia, top 4. Click en un chip autocompleta km/nota/tipo + recalcula costo.
+- **D8 (odometro) descartado** por decision del usuario (mucho esfuerzo, sin valor agregado en esta seccion).
+
+### v18.21 — Pill de piloto + emojis
+- **Selector de Piloto como pill compacto** (avatar de color por `PILOT_COLORS` + nombre + caret ▾) en Registrar Viaje **y** Cargar Nafta, replicando el mockup. Va respaldado por el `<select>` nativo como overlay transparente (`.cn-driver-select`, anula el `min-height:48px` global), preservando todos los ids y listeners. Helper `renderDriverPill()`.
+- **Titulos con emoji**: 🚗 Registrar viaje · ⛽ Cargar Nafta (+ modos edicion).
+- **Chips frecuentes con emoji** inferido de la nota (`tripNoteEmoji()`: 🏢 trabajo/oficina, 🏠 casa, 🏖️ costa, ❤️ novia… fallback 📍), manteniendo el estilo violeta. El `data-note` queda limpio (sin emoji).
+
+### v18.22 — Emoji del auto en el boton del Home
+- El boton de accion `btn-quick-trip` mostraba "+"; se reemplaza por 🚗 para matchear el ⛽ de "Cargar Nafta".
+
+**Proceso aprendido:** la fidelidad al mockup se valida renderizando el componente real y comparando screenshot-vs-mock (no solo la logica). Saltarse ese paso en v18.20 derivo en el reclamo del usuario que motivo v18.21.
+
+---
+
 ## Problemas de iOS/Safari Resueltos
 
 ### 1. Texto Vertical en Fechas (v15.3 → v15.4)
@@ -425,7 +453,7 @@ Rediseño del modal de carga al layout **"Express"** (diseño en `docs/05_modelo
 
 ---
 
-## Estructura Visual Actual (v18.18)
+## Estructura Visual Actual (v18.22)
 
 ### Vista Detalle — Sub-tabs
 

@@ -465,7 +465,7 @@ CREATE INDEX idx_payments_full_tank ON payments (vehicle_id, is_full_tank)
 
 ## Estado de Seguridad
 
-### Estado actual (v18.18)
+### Estado actual (v18.22)
 
 - **RLS habilitado** en todas las tablas desde v16.0
 - **Auth obligatoria** para todas las operaciones desde v16.0 (politicas usan `authenticated` role)
