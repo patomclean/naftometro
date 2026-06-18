@@ -1,6 +1,6 @@
 # Naftómetro — Modelo Financiero v2 (Documento de Diseño)
 
-> **Estado:** Diseño consensuado, NO implementado. Este documento es la base a validar antes de programar nada.
+> **Estado:** Diseño **decidido y validado con datos reales** (ver §10), NO implementado aún. Implementación en pausa hasta el próximo tanque lleno (ancla).
 > **Objetivo:** Reemplazar el modelo actual (PPP con revalúo + correction_factor) por un modelo **a costo, suma cero, transparente**, donde el que paga la nafta nunca pierde dinero.
 > **Mockups visuales:** abrir `docs/mockups/modelo_v2_mockups.html` en el navegador para ver el UX/UI con el look real de la app.
 
@@ -247,4 +247,52 @@ Es el **corazón financiero** de la app. Requiere: tests de la invariante de sum
 
 ---
 
-*Documento de diseño v1 — Junio 2026. Asociado a la discusión de modelo financiero post-v18.15. Sin implementar.*
+---
+
+## 10. Adenda — Decisiones tomadas y validación con datos reales (junio 2026)
+
+> El modelo pasó de "diseñado" a **decidido y validado con datos reales**. Falta implementar (en pausa hasta el próximo tanque lleno).
+
+### 10.1 Decisiones cerradas
+
+**Modelo de uso (de acá en adelante): Pool a costo = Costo Promedio Ponderado (WAC).**
+- El tanque guarda `pool_litros` + `pool_costo`. Precio de un viaje = `pool_costo / pool_litros` (promedio ponderado **a costo** de toda la nafta mezclada). Ejemplo: quedan 20 L a $2.000 ($40.000) + cargo 30 L a $2.500 ($75.000) → 50 L / $115.000 = **$2.300/L**; un viaje de 10 L cuesta $23.000.
+- Es un método contable **estándar**: IFRS IAS 2 "weighted average cost", SAP "moving average price", ACB de cripto/acciones. Más justo que FIFO para un tanque **compartido y fungible** — todos pagan el mismo precio mezclado, sin importar el azar de manejar antes o después de una carga.
+- Un viaje, una vez cobrado, **queda fijo en el ledger** (a diferencia del modelo viejo, que re-preciaba con `recalculateTrips`).
+- Se descartan: revalúo de nafta vieja, `correction_factor` que inyecta saldo, y el par desincronizable `current_ppp`/`virtual_liters` (una sola fuente de verdad).
+
+**Alcance fase 1:** solo el núcleo (pool + suma cero + fix de reconciliación). SIN odómetro, SIN UI de reconciliación 3 niveles, SIN notificaciones (fases futuras).
+
+**Migración: línea nueva con saldos CORREGIDOS.** NO se siguen los saldos de hoy (están mal); NO se recalcula el ledger viejo entrada-por-entrada (la historia es muy sucia, ver §10.4). Se calcula el saldo correcto de cada piloto **una vez** con el modelo "plata + km" y se escribe como `opening_balance`; de ahí el pool sigue incremental.
+
+**Ancla:** sale del **próximo tanque lleno** (litros cargados = capacidad − remanente), NO de leer el medidor. Mientras los viajes estén registrados hasta ese llenado, la cuenta cierra.
+
+### 10.2 "Suma cero" = conservación, no "todos en cero"
+
+La invariante es **Σ balances = `pool_costo`** (valor de la nafta que queda), **no $0**. Como el tanque nunca llega a 0 L, **siempre hay alguien con crédito a favor** = el que pagó la nafta que aún está en el tanque. Ese crédito está **respaldado por nafta física** y se recupera a medida que se consume.
+
+### 10.3 Saldar deudas sin vaciar el tanque
+
+El saldo de un piloto tiene **dos naturalezas**:
+1. **Deuda de consumo** (consumió más de lo que pagó) → se salda **en plata**.
+2. **Crédito por nafta en el tanque** (cargó y aún no se consumió) → es un **activo**, NO se salda en plata; se recupera al consumirse.
+
+Al saldar (ej. fin de mes) se lleva a **los deudores a cero**, no a todos. Los acreedores conservan su residual respaldado por nafta; el tanque no se vacía y se sigue desde ahí con la nafta restante + cargas nuevas. **Implicancia UI:** la Smart Card y el botón "Saldar" deben distinguir **deuda de consumo** (saldable) de **crédito por nafta** (activo, "lo recuperás cuando se consuma").
+
+### 10.4 Validación con datos reales (vehículo Taos)
+
+Simulacro read-only sobre la historia real (`sim/pool_sim.js`, fuera del repo, reproducible):
+- **El modelo viejo no cierra:** Σ saldos = +$13.145 vs valor físico del tanque (~$70k). El `tank_audit_adjustment` inyecta **+$82.269 de la nada** (bug confirmado en el ledger); los `opening_balance` legacy suman +$86.480.
+- **Pool v2 da suma cero exacta** (Σ = `pool_costo`).
+- **Caso testigo Belu:** el modelo viejo la mostraba debiendo −$12.562; en realidad cargó un tanque y casi no manejó → es **acreedora de ~+$57-65k**. El pool lo corrige.
+- **Data sucia detectada:** 2 de 9 ciclos son físicamente imposibles (ciclos 3 y 7: se cargó a "tanque lleno" más litros que el consumo implícito por km → el flag de tanque lleno está **sobre-aplicado** en la historia). Por eso la reconciliación por ciclo solo es confiable con anclas limpias (→ a futuro, con odómetro); para el restateo del pasado conviene el modelo **plata + km** (robusto: solo plata cargada + km + un ancla).
+- **Robustez:** Pato y Belu quedan estables ante cualquier supuesto; PAPÁ y Marcos dependen del ancla (litros de hoy) porque manejan casi todos los km.
+- Rinde real de ciclos cerrados: **10,33 km/l**.
+
+### 10.5 Estado e implementación
+
+Implementación **en pausa** hasta el próximo tanque lleno (auto en el taller al momento de la discusión). El **backup + el código + los tests** pueden prepararse sin riesgo; la **migración** (única escritura irreversible) se dispara recién con el ancla limpia. El simulacro `sim/pool_sim.js` es el borrador de referencia del motor.
+
+---
+
+*Documento de diseño v1 + Adenda de decisiones (§10) — Junio 2026. Asociado a la discusión de modelo financiero post-v18.15. Decidido y validado; sin implementar.*
