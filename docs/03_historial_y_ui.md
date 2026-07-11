@@ -2,7 +2,7 @@
 
 ## Linea de Tiempo del Proyecto
 
-El proyecto se desarrolla desde el 12 de febrero de 2026, con 40+ commits. La version actual es v19.0. La evolucion se organiza en fases:
+El proyecto se desarrolla desde el 12 de febrero de 2026, con 40+ commits. La version actual es v19.2. La evolucion se organiza en fases:
 
 ---
 
@@ -432,6 +432,24 @@ Reemplazo del nucleo financiero completo. Diseno, decisiones y validacion detall
 | Marcos | −$105.142 | −$139.685,97 |
 
 **Proceso:** backup completo antes de tocar nada (`backup/2026-06-17_taos_backup.sql`); simulacro read-only (`sim/pool_sim.js`) para validar el modelo contra datos reales ANTES de escribir codigo; despliegue en orden estricto schema → datos → codigo; comunicacion al grupo en lenguaje simple (sin formulas) explicando el cambio de saldos y por que nadie pierde plata.
+
+**v19.1 — Ediciones y limpieza conservan la invariante (Julio 2026):**
+
+Una revision post-deploy encontro 3 escenarios que rompian `SUM(ledger) = pool_costo`. Se corrigieron adaptandolos al modelo pool bajo un principio unico: **toda edicion = REVERSION + NUEVO CARGO** (el ledger es append-only; las entradas compensatorias llevan el mismo `ref_id` que el original, asi el cascade trigger las borra juntas y su suma neta es el valor final del registro — borrar despues de editar sigue consistente).
+
+- **Limpiar viajes**: restituye Σlitros y Σcosto de todos los viajes al pool (antes rompia la invariante por el total historico) + refresca ledger/vehiculos post-cascade.
+- **Editar carga**: par `fuel_payment` (−neto viejo al piloto viejo, +neto nuevo al nuevo) + `applyPoolDelta` del delta. Antes editar el monto y borrar la carga descuadraba el pool.
+- **Editar viaje**: cambio de piloto solo → mueve el debito con costo FIJO (pool intacto); cambio de km/tipo de manejo → devuelve litros/costo al pool y re-precia al precio del pool post-reversion. Solo metadatos (nota/fecha) → sin entradas.
+- Validado con `sim/edit_flows_test.js`: 20 asserts + fuzz de 300 operaciones aleatorias mezclando crear/editar/borrar/limpiar — desvio final $0,00. Commit `c2371bb`.
+
+**v19.2 — UI alineada al modelo pool (Julio 2026):**
+
+Limpieza de los restos del modelo viejo que confundian (sin impacto financiero):
+- Badge "Estimado" en viajes → **"Pool"**, y su popup ya no promete "se ajustara en el proximo tanque lleno" (falso en v19): explica que el costo se cobro al precio promedio del tanque y queda fijo. El ✓ verde se conserva para viajes reconciliados legacy.
+- Toast "Tanque virtual vacio, usando precio de referencia" → "Sin litros registrados en el tanque: se usa el precio de la ultima carga" (dispara sobre `pool_litros`, no sobre el tanque virtual legacy).
+- **Home cards** ahora muestran el mismo precio/l, km/l y $/km que el Detail: precio del pool + `km_l_aprendido` (antes usaban ultima carga + consumo teorico — dos numeros distintos para el mismo auto segun la vista).
+- Codigo muerto eliminado: `calculateCost()` (PPP + correction_factor) y `calculateWeightedPrice()` (blend PPP) ya no tenian callers.
+- Skills de `.claude/skills/` actualizadas al modelo v2 (la de ledger-rules todavia documentaba el PPP como vigente).
 
 ---
 

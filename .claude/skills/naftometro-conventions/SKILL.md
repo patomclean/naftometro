@@ -60,7 +60,7 @@ Confundir estos 3 flujos es el error más frecuente. Cada uno toca tablas distin
 
 | Flujo | Problema | Función | Tabla principal | Reversible |
 |---|---|---|---|---|
-| **A: Reconciliación** | Costos teóricos vs reales | `performTankAudit()` | `trips` (UPDATE) + `ledger` (`tank_audit_adjustment`) | NO |
+| **A: Reconciliación** | Nafta consumida no registrada (gap al llenar) | `performTankAudit()` | `ledger` (`tank_audit_adjustment`, suma cero por km) + `vehicles` (reancla pool) — v19: NO toca `trips` | NO |
 | **B: Settlement** | Saldar deuda entre pilotos | `handleSettleDebtSubmit()` | `ledger` (2x `transfer`) | NO |
 | **C: Identity Claim** | Vincular usuario ↔ piloto | `handleClaimIdentity()` | `vehicle_driver_mappings` (INSERT) | SÍ |
 

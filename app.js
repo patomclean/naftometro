@@ -1,4 +1,4 @@
-console.log("🚀 Naftómetro v19.1 cargado correctamente — Ediciones/limpieza conservan la invariante del pool");
+console.log("🚀 Naftómetro v19.2 cargado correctamente — UI alineada al modelo pool (sin restos del PPP)");
 
 // ============================================================
 // 1. CONSTANTS & CONFIGURATION
@@ -544,14 +544,6 @@ function calculateTankLevel() {
   return +(litersIn - litersOut).toFixed(2);
 }
 
-// v11: Calculate weighted average price when adding fuel
-function calculateWeightedPrice(tankLiters, currentPrice, newAmount, newLiters) {
-  const effectiveTank = Math.max(tankLiters, 0);
-  const totalLiters = effectiveTank + newLiters;
-  if (totalLiters <= 0) return currentPrice;
-  return +((effectiveTank * currentPrice + newAmount) / totalLiters).toFixed(2);
-}
-
 // v18.17: descuento en $ a partir del valor + unidad ($ o %)
 function getDiscountAmount(amount) {
   const raw = parseFloat(dom.paymentDiscount.value) || 0;
@@ -622,14 +614,6 @@ function updatePaymentPriceSummary() {
 
   toggleHidden(dom.summaryPerceptionNote, true);
   toggleHidden(dom.paymentPriceSummary, false);
-}
-
-// v17: correctionFactor multiplies theoretical consumption (>1 = consumes more than spec)
-function calculateCost(km, consumption, fuelPrice, correctionFactor = 1.0) {
-  const adjustedConsumption = consumption / correctionFactor;
-  const liters = km / adjustedConsumption;
-  const cost = liters * fuelPrice;
-  return { liters: +liters.toFixed(2), cost: +cost.toFixed(2) };
 }
 
 function toggleHidden(el, hide) {
@@ -1386,8 +1370,15 @@ async function renderVehicleCards() {
   state.vehicles.forEach((v, index) => {
     const drivers = v.drivers || [];
     const lastTrip = lastTrips[v.id];
-    const fuelPrice = latestPrices[v.id] || v.fuel_price;
-    const costPerKm = fuelPrice / v.consumption;
+    // v19.2: mismo precio que Detail — el del pool a costo; fallback a la
+    // ultima carga solo si el vehiculo no esta migrado o el pool esta vacio.
+    const poolL = Number(v.pool_litros) || 0;
+    const poolC = Number(v.pool_costo) || 0;
+    const fuelPrice = (poolL > 0.5 && poolC > 0)
+      ? poolC / poolL
+      : (latestPrices[v.id] || v.fuel_price);
+    const displayKmL = getLearnedKmL(v, 'Mixto') || v.consumption || 1;
+    const costPerKm = fuelPrice / displayKmL;
     const isLastVisited = v.id === state.lastVisitedVehicleId;
 
     const card = document.createElement('div');
@@ -1402,7 +1393,7 @@ async function renderVehicleCards() {
         <span class="vehicle-card-arrow">&#8250;</span>
       </div>
       <div class="vehicle-card-badges">
-        <span class="badge">${v.consumption} km/l</span>
+        <span class="badge">${displayKmL} km/l</span>
         <span class="badge">${v.fuel_type}</span>
         <span class="badge badge-highlight">${formatCurrency(fuelPrice)}/l</span>
         <span class="badge badge-highlight">${formatCurrency(costPerKm)}/km</span>
@@ -1476,7 +1467,7 @@ function renderVehicleDetail() {
   const latestPrice = getPoolPrice(vehicle);
   dom.vehicleFuelPriceBadge.textContent = formatCurrency(latestPrice) + '/l';
 
-  const displayKmL = getLearnedKmL(vehicle, 'Mixto');
+  const displayKmL = getLearnedKmL(vehicle, 'Mixto') || vehicle.consumption || 1;
   const costPerKm = latestPrice / displayKmL;
   dom.vehicleCostKmBadge.textContent = formatCurrency(costPerKm) + '/km';
 
@@ -1593,7 +1584,7 @@ function renderTrips() {
       <td data-label="Piloto " style="color:${pilotColor};font-weight:600">${trip.driver}</td>
       <td data-label="Km ">${Number(trip.km).toLocaleString('es-AR')}</td>
       <td data-label="Litros ">${Number(trip.liters).toFixed(2)}</td>
-      <td data-label="Costo "><strong>${formatCurrency(trip.cost)}</strong>${isTripVerified(trip) ? '<span class="reconciled-check" title="Precio verificado">✓</span>' : '<span class="estimated-price" title="Precio estimado">Estimado</span>'}</td>
+      <td data-label="Costo "><strong>${formatCurrency(trip.cost)}</strong>${isTripVerified(trip) ? '<span class="reconciled-check" title="Precio verificado">✓</span>' : '<span class="estimated-price" title="Precio del pool">Pool</span>'}</td>
       <td data-label="Tipo ">${getDriveTypeEmoji(trip.drive_type)}</td>
       <td data-label="Nota " class="trip-note" title="${trip.note || ''}">${trip.note || '-'}</td>
       <td></td>
@@ -2248,7 +2239,7 @@ function showReconciliationBreakdown(trip) {
   }, 100);
 }
 
-// v15.1: Popup explanation for estimated prices
+// v15.1 / v19.2: Popup — explica el precio del pool (final, no se recalcula)
 function showEstimatedExplanation() {
   const existing = document.querySelector('.payment-breakdown-popup');
   if (existing) existing.remove();
@@ -2258,10 +2249,10 @@ function showEstimatedExplanation() {
   popup.innerHTML = `
     <button class="breakdown-close" id="breakdown-close-btn">&times;</button>
     <div class="breakdown-row" style="font-weight:600;margin-bottom:0.5rem">
-      Precio Estimado
+      Precio del pool
     </div>
     <div class="breakdown-row">
-      <span>Este precio es una estimación basada en la última carga. Se ajustará al valor real en el próximo tanque lleno.</span>
+      <span>Este viaje se cobró al precio promedio de la nafta que había en el tanque en ese momento. El costo queda fijo y no se recalcula.</span>
     </div>
   `;
 
@@ -2725,8 +2716,6 @@ async function handleVehicleSubmit(e) {
   try {
     if (state.modalMode === 'edit') {
       const editId = parseInt(dom.vehicleFormId.value);
-      const oldVehicle = state.vehicles.find((v) => v.id === editId);
-
       await updateVehicle(editId, payload);
 
       // v19: cambiar precio/consumo del vehiculo YA NO re-precia viajes
@@ -3664,10 +3653,10 @@ async function handleTripSubmit(e) {
     ? new Date(dom.tripOccurredAt.value).toISOString()
     : new Date().toISOString();
 
-  // v11: Verificar tanque virtual
-  const tankLevel = calculateTankLevel();
-  if (tankLevel <= 0) {
-    showToast('Tanque virtual vacio, usando precio de referencia', 'error');
+  // v19.2: si el pool no tiene litros registrados, el precio del viaje
+  // cae al de la ultima carga (fallback de getPoolPrice) — avisar.
+  if ((Number(vehicle.pool_litros) || 0) <= 0.5) {
+    showToast('Sin litros registrados en el tanque: se usa el precio de la ultima carga', 'error');
   }
 
   try {
