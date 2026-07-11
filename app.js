@@ -1,4 +1,4 @@
-console.log("🚀 Naftómetro v19.0 cargado correctamente — Modelo v2: pool a costo");
+console.log("🚀 Naftómetro v19.1 cargado correctamente — Ediciones/limpieza conservan la invariante del pool");
 
 // ============================================================
 // 1. CONSTANTS & CONFIGURATION
@@ -2821,14 +2821,33 @@ function handleClearTripsClick() {
     const btn = dom.btnConfirmOk;
     setButtonLoading(btn, true);
     try {
+      // v19.1: restituir al pool los litros y el costo de TODOS los viajes.
+      // El cascade trigger borra sus entradas trip_cost del ledger (Σ ledger
+      // sube por la suma de costos), asi que el pool debe subir lo mismo
+      // para conservar SUM(ledger) = pool_costo.
+      const totalLiters = state.trips.reduce((s, t) => s + (Number(t.liters) || 0), 0);
+      const totalCost = state.trips.reduce((s, t) => s + (Number(t.cost) || 0), 0);
+
       await deleteTripsForVehicle(state.activeVehicleId);
+      if (totalLiters > 0 || totalCost > 0) {
+        await applyPoolDelta(vehicle, totalLiters, totalCost);
+      }
       showToast('Viajes eliminados');
       haptic();
       state.trips = [];
       state.dashboardLoaded = false;
+      // v19.1: el cascade borro filas del ledger y el pool cambio —
+      // refrescar ambos para que los balances no queden stale.
+      const [ledger, vehicles] = await Promise.all([
+        fetchLedger(state.activeVehicleId),
+        fetchVehicles(),
+      ]);
+      state.ledger = ledger;
+      state.vehicles = vehicles;
       renderTrips();
       renderSummary();
       renderBalances();
+      renderVehicleDetail();
       toggleHidden(dom.confirmModal, true);
     } catch (err) {
       showToast('Error: ' + err.message, 'error');
@@ -3213,9 +3232,46 @@ async function handlePaymentSubmit(e) {
     }
 
     // v12: Update existing or create new
-    const isNewPayment = !state.editingPaymentId; // v19: el pool solo se toca al CREAR
+    const isNewPayment = !state.editingPaymentId;
     if (state.editingPaymentId) {
+      // v19.1: editar una carga = REVERSION + NUEVO CREDITO (ledger append-only).
+      // No se toca la entrada vieja: se inserta el par compensatorio con el
+      // mismo ref_id (el cascade trigger las borra todas juntas al eliminar
+      // la carga) y el pool se mueve el mismo delta neto -> la invariante
+      // SUM(ledger) = pool_costo se conserva exacta.
+      const oldPayment = state.payments.find(pay => pay.id === state.editingPaymentId);
       await updatePayment(state.editingPaymentId, paymentData);
+
+      if (oldPayment && Number(oldPayment.liters_loaded) > 0) {
+        const oldNeto = +(Number(oldPayment.amount) - (Number(oldPayment.discount_amount) || 0)).toFixed(2);
+        const oldL = Number(oldPayment.liters_loaded) || 0;
+        const newNeto = +(amount - discountAmount).toFixed(2);
+        const newL = Number(litersLoaded) || 0;
+        const financialChange = Math.abs(newNeto - oldNeto) > 0.01
+          || Math.abs(newL - oldL) > 0.01
+          || oldPayment.driver !== driver;
+
+        if (financialChange) {
+          await insertLedgerEntry({
+            vehicle_id: state.activeVehicleId, driver: oldPayment.driver,
+            type: 'fuel_payment', amount: -oldNeto,
+            ref_id: oldPayment.id,
+            description: `Reversion por edicion de carga`
+          });
+          await insertLedgerEntry({
+            vehicle_id: state.activeVehicleId, driver,
+            type: 'fuel_payment', amount: +newNeto,
+            ref_id: oldPayment.id,
+            description: newL > 0 ? `Carga ${newL} lts (editada)` : 'Pago combustible (editado)'
+          });
+          const deltaL = +(newL - oldL).toFixed(2);
+          const deltaC = +(newNeto - oldNeto).toFixed(2);
+          if (Math.abs(deltaL) > 0.001 || Math.abs(deltaC) > 0.01) {
+            const poolVehicle = getActiveVehicle();
+            if (poolVehicle) await applyPoolDelta(poolVehicle, deltaL, deltaC);
+          }
+        }
+      }
       showToast('Carga actualizada');
       state.payments = await fetchPayments(state.activeVehicleId);
     } else {
@@ -3617,20 +3673,70 @@ async function handleTripSubmit(e) {
   try {
     // v12: Update existing or create new
     if (state.editingTripId) {
-      // v19: un viaje COBRADO queda fijo — no se re-precia al editar (el
-      // ledger y el pool ya registraron su costo original; re-preciar aca
-      // romperia la invariante SUM(ledger) = pool_costo). Se actualizan solo
-      // los metadatos. Para corregir km/costo: eliminar y recrear el viaje.
+      // v19.1: editar un viaje = REVERSION + NUEVO COBRO (ledger append-only).
+      // - Solo metadatos (nota/fecha): no toca ledger ni pool.
+      // - Solo piloto: el costo original se mantiene, el debito se MUEVE
+      //   (credito compensatorio al piloto viejo + debito al nuevo).
+      // - Km o tipo de manejo: se devuelven litros y costo originales al
+      //   pool y se recobra al precio ACTUAL del pool (post-reversion).
+      // Todas las entradas llevan ref_id = trip.id: el cascade trigger las
+      // borra juntas al eliminar el viaje, y su suma neta es exactamente el
+      // costo final guardado -> borrar despues de editar sigue consistente.
       const originalTrip = state.trips.find(t => t.id === state.editingTripId);
+      const oldCost = originalTrip ? +Number(originalTrip.cost).toFixed(2) : 0;
+      const oldLiters = originalTrip ? +Number(originalTrip.liters).toFixed(2) : 0;
+      const oldDriver = originalTrip ? originalTrip.driver : driver;
+      const kmChanged = originalTrip && Math.abs(Number(originalTrip.km) - km) > 0.01;
+      const typeChanged = originalTrip && (originalTrip.drive_type || 'Mixto') !== driveType;
+      const driverChanged = originalTrip && oldDriver !== driver;
+      const reprice = kmChanged || typeChanged;
+
+      let finalLiters = oldLiters;
+      let finalCost = oldCost;
+
+      if (reprice) {
+        // Recalcular con el pool COMO SI el viaje viejo no hubiera pasado
+        const poolAfterRevert = {
+          ...vehicle,
+          pool_litros: +((Number(vehicle.pool_litros) || 0) + oldLiters).toFixed(2),
+          pool_costo: +((Number(vehicle.pool_costo) || 0) + oldCost).toFixed(2),
+        };
+        const repriced = calculatePoolTripCost(poolAfterRevert, km, driveType);
+        finalLiters = repriced.liters;
+        finalCost = repriced.cost;
+      }
+
       await updateTrip(state.editingTripId, {
         driver,
         km,
         note: dom.tripNote.value.trim() || null,
-        liters: originalTrip ? originalTrip.liters : liters,
-        cost: originalTrip ? originalTrip.cost : cost,
+        liters: finalLiters,
+        cost: finalCost,
         drive_type: driveType,
         occurred_at: occurredAt,
       });
+
+      if (originalTrip && (reprice || driverChanged)) {
+        // Par compensatorio: revierte el debito viejo, aplica el nuevo
+        await insertLedgerEntry({
+          vehicle_id: state.activeVehicleId, driver: oldDriver,
+          type: 'trip_cost', amount: +oldCost,
+          ref_id: originalTrip.id,
+          description: `Reversion por edicion de viaje`
+        });
+        await insertLedgerEntry({
+          vehicle_id: state.activeVehicleId, driver,
+          type: 'trip_cost', amount: -finalCost,
+          ref_id: originalTrip.id,
+          description: `Viaje ${km} km (${driveType}, editado)`
+        });
+        // Pool: mismo delta neto que el ledger (0 si solo cambio el piloto)
+        const deltaL = +(oldLiters - finalLiters).toFixed(2);
+        const deltaC = +(oldCost - finalCost).toFixed(2);
+        if (Math.abs(deltaL) > 0.001 || Math.abs(deltaC) > 0.01) {
+          await applyPoolDelta(vehicle, deltaL, deltaC);
+        }
+      }
       showToast('Viaje actualizado');
     } else {
       const createdTrip = await createTrip({
