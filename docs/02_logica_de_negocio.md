@@ -12,18 +12,15 @@ Naftometro tiene tres flujos independientes que resuelven problemas distintos. C
 
 **Problema que resuelve:** Los costos de viaje se calculan con consumo *teorico*. El consumo real varia. Este flujo corrige retroactivamente los costos cuando hay datos reales.
 
-**Actores:** Viajes (tabla `trips`) + Cargas de combustible (tabla `payments`) + Vehiculo (`vehicles.correction_factor`)
+**Actores:** Viajes (tabla `trips`) + Cargas de combustible (tabla `payments`) + Vehiculo (`vehicles.pool_litros`/`pool_costo`/`km_l_aprendido`, desde v19.0)
 
 **Disparador:** El piloto marca una carga como **"Tanque lleno"** y ya existe un tanque lleno anterior (ciclo cerrado).
 
-**Mecanismo:** `performTankAudit()` calcula el factor de desviacion real/estimado y recalcula `liters` y `cost` en cada trip del ciclo.
+**Mecanismo (v19.0):** `performTankAudit()` aprende el rinde real (con guarda de plausibilidad 4-25 km/l) y reancla el pool a la capacidad fisica. **Ya NO recalcula `liters`/`cost` de trips existentes** — un viaje cobrado queda fijo. Ver seccion 8 para el detalle.
 
-**Resultado visible:**
-- Badge **checkmark verde** (✓) en la fila del viaje → significa "este costo es real, no estimado"
-- Los viajes sin reconciliar muestran un badge gris **"Estimado"** (clickeable, explica que es aproximado)
-- El campo `vehicles.correction_factor` se actualiza para mejorar estimaciones futuras
+**Resultado visible:** el faltante (si lo hay) se reparte por promedio ponderado de km entre los pilotos del ciclo, va al Activity Feed, y actualiza el badge de rinde real aprendido en la ficha del vehiculo.
 
-**Resultado en el ledger:** Entradas de tipo `tank_audit_adjustment` que ajustan la diferencia de costo por piloto.
+**Resultado en el ledger:** Entradas de tipo `tank_audit_adjustment`, cuya suma es **exactamente** el faltante descontado del pool (suma cero — ya no inyecta saldo de la nada, bug corregido en v19.0).
 
 **Metafora correcta:** *"El viaje pasa de ser una estimacion a tener el sello de auditoria."* / *"Del presupuesto a la factura real."*
 
@@ -52,7 +49,7 @@ Naftometro tiene tres flujos independientes que resuelven problemas distintos. C
 
 **Metafora correcta:** *"La deuda se convierte en un check verde de tranquilidad."* / *"Del rojo al equilibrio."*
 
-**NO confundir con:** La reconciliacion de viajes. Saldar una deuda no cambia ningun costo de viaje ni modifica el `correction_factor` — solo reequilibra los saldos monetarios entre personas.
+**NO confundir con:** La reconciliacion de viajes. Saldar una deuda no cambia ningun costo de viaje ni modifica el pool (`pool_litros`/`pool_costo`/`km_l_aprendido`) — solo reequilibra los saldos monetarios entre personas.
 
 ---
 
@@ -100,11 +97,13 @@ Naftometro tiene tres flujos independientes que resuelven problemas distintos. C
 | **"Debes plata"** (Smart Card roja) | El usuario consumio mas nafta de la que cargo | Flujo B — saldos |
 | **"Te deben plata"** (Smart Card verde) | El usuario cargo mas nafta de la que consumio | Flujo B — saldos |
 | **`transfer`** (ledger) | Entrada de doble entrada contable al saldar una deuda entre pilotos | Flujo B unicamente |
-| **`tank_audit_adjustment`** (ledger) | Ajuste de costo post-reconciliacion, proporcional a los km de cada piloto | Flujo A unicamente |
-| **`correction_factor`** | Multiplicador en el vehiculo que ajusta consumo teorico al real historico | Flujo A unicamente |
-| **`is_reconciled`** | Flag en un trip que indica que su costo fue verificado con datos reales | Flujo A unicamente |
+| **`tank_audit_adjustment`** (ledger) | Ajuste suma cero (v19.0), proporcional a los km de cada piloto en el ciclo | Flujo A unicamente |
+| **`correction_factor`** | **DEPRECADO desde v19.0.** Multiplicador legacy que ajustaba consumo teorico al real. Reemplazado por `km_l_aprendido` | Flujo A (modelo viejo) |
+| **`km_l_aprendido`** (v19.0) | Rinde real aprendido en km/l, con guarda de plausibilidad fisica (4-25 km/l) | Flujo A unicamente |
+| **`pool_litros` / `pool_costo`** (v19.0) | Los dos numeros del tanque: litros actuales y costo real pagado por ellos. `pool_costo/pool_litros` = precio del pool | Nucleo financiero — reemplaza a PPP/virtual_liters |
+| **`is_reconciled`** | Flag legacy en un trip. Desde v19.0 los viajes cobrados quedan fijos; ya no se re-precian | Flujo A (modelo viejo) |
 | **Clearing / Liquidacion sugerida** | Algoritmo greedy que calcula las transferencias MINIMAS para equilibrar saldos | Flujo B — paso previo al settlement |
-| **PPP** (Precio Promedio Ponderado) | Precio del litro en el tanque, calculado ponderando cargas anteriores con la nueva | Independiente (afecta calculos de Flujo A) |
+| **PPP** (Precio Promedio Ponderado) | **DEPRECADO desde v19.0.** Precio del litro con revaluo de nafta vieja. Reemplazado por el precio del pool (`pool_costo/pool_litros`), que NO revalua | Modelo viejo |
 
 ---
 
@@ -121,143 +120,69 @@ Multiples conductores ("pilotos") comparten un vehiculo. Cada piloto carga combu
 
 ---
 
-## 1. Calculo del Costo de un Viaje
+## 1-3. Modelo Financiero v2 — Pool a costo (v19.0)
 
-### Formula Base
+> **DEPRECADO desde v19.0:** el modelo anterior (PPP con revaluo + `correction_factor` + `virtual_liters`) se reemplazo por el **pool a costo**. Las columnas viejas quedan en el schema (legacy, no se leen/escriben). Diseno completo, decisiones y validacion con datos reales en `docs/05_modelo_financiero_v2.md`.
 
-```
-Litros consumidos = km / consumo (km/l)
-Costo del viaje = litros consumidos * precio del combustible ($/l)
-```
+### El pool: dos numeros, una sola fuente de verdad
 
-### Consumo segun Tipo de Manejo
-
-Cada vehiculo tiene 3 tasas de consumo basadas en su modelo (desde VEHICLE_DATABASE):
-
-| Tipo | Descripcion | Ejemplo (VW Gol 1.6) |
-|------|-------------|----------------------|
-| Urbano | Ciudad, trafico, muchas frenadas | 10.5 km/l |
-| Mixto | Combinado ciudad + ruta | 12.5 km/l |
-| Ruta | Autopista, velocidad constante | 15.0 km/l |
-
-La funcion `getConsumptionForDriveType(vehicle, driveType)` selecciona la tasa correcta del `VEHICLE_DATABASE`. Si el modelo no esta en la base de datos, usa el consumo manual del vehiculo (`vehicle.consumption`).
-
-### Precio del Combustible (PPP — Precio Promedio Ponderado)
-
-Desde v17, el precio se toma del campo `vehicles.current_ppp` que se actualiza de forma persistente en Supabase. La funcion `getLatestFuelPrice(vehicle)` obtiene el precio mas reciente:
-
-1. Usa `vehicle.current_ppp` si existe y es mayor a cero
-2. Fallback: busca el `price_per_liter` del pago mas reciente con precio
-3. Ultimo fallback: usa el `fuel_price` del vehiculo (precio de referencia manual)
-
-### Ejemplo Completo
+El tanque es un **pool** representado por `vehicles.pool_litros` (cuantos litros hay) y `vehicles.pool_costo` (cuanto se pago por esos litros, a costo real — sin revaluo). El precio del combustible en cualquier momento es:
 
 ```
-Viaje: 50 km en modo Urbano
-Vehiculo: VW Gol Trend 1.6 (urbano = 10.5 km/l)
-Precio nafta: $1,200/l
-
-Litros = 50 / 10.5 = 4.76 litros
-Costo = 4.76 * $1,200 = $5,714.29
+precio_pool = pool_costo / pool_litros
 ```
 
-### Impacto del correction_factor (v17)
+Este es un **promedio ponderado A COSTO** (metodo WAC — Weighted Average Cost — estandar contable: IFRS IAS2, SAP "moving average price"). Cuando conviven litros de distintas cargas a distinto precio, el precio del pool es el promedio ponderado por cantidad — **nunca revalua la nafta vieja al precio nuevo**.
 
-Desde v17, el calculo real usa el `correction_factor` del vehiculo, que multiplica el consumo teorico para acercarlo al real historico acumulado:
+**Ejemplo:** quedan 20 L comprados a $2.000 ($40.000) + se cargan 30 L a $2.500 ($75.000) → pool = 50 L / $115.000 → precio = **$2.300/L** (ni $2.000 ni $2.500). Un viaje que consume 10 L cuesta $23.000.
 
-```
-consumo_ajustado = consumo_teorico_por_tipo * correction_factor
-litros = km / consumo_ajustado
-costo = litros * current_ppp
-```
-
-- `correction_factor = 1.0` → consumo identico al teorico
-- `correction_factor = 1.094` → 9.4% mas consumo que el teorico
-
----
-
-## 2. Precio Ponderado del Combustible (PPP)
-
-Cuando se carga combustible, el precio del vehiculo se actualiza con un promedio ponderado que considera el combustible ya existente en el tanque:
-
-### Formula
+### Costo de un viaje
 
 ```
-nuevo_ppp = (litros_virtuales_actuales * ppp_actual + monto_pagado) / (litros_virtuales_actuales + litros_nuevos)
+km_l = km_l_aprendido ajustado por tipo de manejo (Urbano/Mixto/Ruta, mismas proporciones que VEHICLE_DATABASE)
+litros = km / km_l
+costo = litros * precio_pool
+pool_litros -= litros
+pool_costo  -= costo
+ledger: { driver, type: 'trip_cost', amount: -costo }
 ```
 
-Este valor se guarda como `vehicles.current_ppp` en la base de datos (persistente).
+`km_l_aprendido` (`vehicles.km_l_aprendido`) reemplaza a `correction_factor`. Se actualiza en `performTankAudit()` (ver seccion 8) con una **guarda de plausibilidad fisica: solo se acepta un rinde entre 4 y 25 km/l**. Un ciclo con rinde implicito fuera de ese rango (data sucia — viajes sin cargar, flags mal puestos) **no contamina** el aprendizaje. Esta guarda es la que faltaba en el modelo viejo: sin ella, `correction_factor` llego a **4.8364** en producción, generando viajes de ~$900/km.
 
-### Ejemplo
+**Un viaje cobrado queda FIJO.** A diferencia del modelo viejo (`recalculateTrips` re-preciaba todos los viajes al cambiar el precio/consumo del vehiculo), en v19.0 esa funcion esta deprecada (no-op). Editar un vehiculo ya no cambia el costo de viajes pasados.
 
-```
-Tanque actual: 20 litros a $1,100/l (virtual_liters = 20, current_ppp = 1100)
-Nueva carga: $30,000 por 25 litros ($1,200/l)
-
-nuevo_ppp = (20 * 1100 + 30000) / (20 + 25)
-nuevo_ppp = (22000 + 30000) / 45
-nuevo_ppp = $1,155.56/l
-
-Nuevo virtual_liters = 20 + 25 = 45
-```
-
-### Guardas defensivas del PPP (v18.15)
-
-El promedio ponderado depende de `virtual_liters` y `current_ppp`, dos campos *derivados* que se persisten en `vehicles`. Si alguno se corrompe, el promedio se rompe (ver incidente v18.15: un `virtual_liters` de 80.091 hundio el PPP a ~$3). Por eso `handlePaymentSubmit()` aplica 3 guardas antes y despues de calcular el nuevo PPP:
-
-1. **Clamp de `oldLiters`** — los litros previos se limitan a `[0, capacidad]` con `clampTankLiters()`. Un `virtual_liters` corrupto ya no puede dominar el promedio.
-2. **Saneo de `oldPPP`** — si el PPP guardado es basura (menor al 10% del precio de la carga actual), no se usa para el blend; se asume que el combustible existente se compro a precio de mercado.
-3. **Piso de `newPPP`** — si el resultado queda por debajo del 20% del precio de la carga, se usa directamente el precio de la carga.
-
-Las 3 guardas son **inertes en operacion normal**: el promedio de dos precios realistas siempre cae entre ellos, lejos de los umbrales. Solo se activan ante valores imposibles.
-
----
-
-## 3. Tanque Virtual
-
-La app mantiene un "tanque virtual" que estima cuantos litros hay en el vehiculo en tiempo real. Desde v17, los litros virtuales se guardan como `vehicles.virtual_liters`.
-
-### Algoritmo (`calculateTankLevel()`)
-
-**Con punto de referencia (tanque lleno):**
-1. Busca la ultima carga marcada como "Tanque lleno"
-2. Parte de la capacidad total del tanque (del VEHICLE_DATABASE)
-3. Suma las cargas posteriores (litros cargados)
-4. Resta los viajes posteriores (litros consumidos)
+### Carga de combustible
 
 ```
-nivel = capacidad_tanque
-      + sum(cargas_posteriores.litros)
-      - sum(viajes_posteriores.litros)
+costo_efectivo = monto - descuento  (Factura A ya viene sumada al monto via percepciones)
+pool_litros += litros_cargados
+pool_costo  += costo_efectivo
+ledger: { driver: pagador, type: 'fuel_payment', amount: +costo_efectivo }
 ```
 
-**Sin punto de referencia (fallback):**
-```
-nivel = sum(todas_las_cargas.litros) - sum(todos_los_viajes.litros)
-```
+El neto que entra al pool es exactamente el mismo que se acredita en el ledger — por eso la invariante se mantiene sola.
 
-**Cap a capacidad (v18.15):** el resultado se limita con `Math.min(nivel, capacidad_tanque)` — un tanque fisico no puede superar su capacidad. Esto corrige el sintoma visual "52/50 lts".
-
-### Mantenimiento de `virtual_liters` (v17+, guardas v18.15)
-
-Ademas del calculo on-the-fly de `calculateTankLevel()`, la app persiste `vehicles.virtual_liters` y lo actualiza incrementalmente:
-- **Registrar viaje** (`handleTripSubmit`): resta los litros consumidos.
-- **Registrar carga** (`handlePaymentSubmit`): suma los litros cargados (o resetea a capacidad si es tanque lleno).
-- **Borrar viaje** (`handleDeleteTrip`): **devuelve los litros del viaje al tanque** (corregido en v18.15 — antes no lo hacia, causando el descuadre raiz del incidente v18.15).
-
-Los 3 writes pasan por `clampTankLiters(vehicle, litros)`, que limita el valor a `[0, capacidad]`. Asi un valor corrupto no se puede persistir ni propagar al promedio ponderado del PPP.
-
-### Capital del Tanque (v15.1)
-
-Calcula el valor monetario del combustible en el tanque y lo atribuye a quien lo pago:
+### La invariante central
 
 ```
-capital = nivel_tanque * precio_actual (current_ppp)
+Σ (balance de todos los pilotos) = pool_costo   (SIEMPRE, exacto)
 ```
 
-Muestra: "El auto tiene X litros valorados en $Y que fueron pagados por [nombres]"
+Cada peso que entra esta, o cobrado a un viaje, o todavia en el pool. El pool nunca llega a 0 L (siempre queda algo de nafta), asi que **siempre hay algun piloto con credito** = el que aporto la nafta que aun no se consumio. Ese credito esta **respaldado por nafta fisica** y se recupera al consumirse — no es "plata que le deben", es un activo. Al saldar deudas (Flujo B) se lleva a los **deudores** a cero; los acreedores conservan su credito por nafta.
 
-La atribucion identifica los pilotos que cargaron combustible desde el ultimo tanque lleno hasta el momento actual.
+### Borrado (viajes y cargas)
+
+Al borrar un viaje o una carga, el cascade trigger borra la entrada del ledger, y el codigo **revierte litros Y costo del pool** (`applyPoolDelta` con signo invertido) para mantener la invariante exacta. Es el fix del bug raiz de v18.15 (que solo revertia litros, no costo) llevado a su forma completa.
+
+### Capital del Tanque
+
+En v19.0, el valor del tanque a costo **es** `pool_costo` directamente (no requiere multiplicar nivel × precio, ya viene calculado):
+
+```
+capital = pool_costo
+```
+
+Muestra: "Hay $X de nafta, aportada por [pilotos] — respaldado, lo recuperan al consumirse."
 
 ---
 
@@ -420,114 +345,72 @@ Antes de v17, los pagos de liquidacion se registraban como payments con:
 
 ---
 
-## 8. Reconciliacion de Tanque Lleno
+## 8. Reconciliacion de Tanque Lleno (v19.0 — suma cero)
 
-### El Problema
+> **Reescrita en v19.0.** El algoritmo viejo (factor de desviacion sin guardas, `tank_audit_adjustment` que inyectaba saldo neto de la nada) se reemplazo por una reconciliacion que **preserva la invariante** `Σ balances = pool_costo` de forma exacta. Ver `docs/05` §10-11 para el diagnostico y la validacion con datos reales (el bug viejo llego a inyectar +$82k de la nada; el `correction_factor` sin guardas llego a 4.8364 con data fuera de orden).
 
-Los costos de viaje son **estimaciones** basadas en consumo teorico. El consumo real varia por trafico, clima, estilo de manejo, presion de neumaticos, etc.
+### El problema (sigue siendo el mismo)
 
-### La Solucion: Ciclos de Tanque Lleno
+Los costos de viaje son estimaciones basadas en el rinde aprendido. Cuando se llena el tanque a tope, la app puede comparar cuanto deberia quedar en el pool vs. cuanto realmente entra — la diferencia es nafta consumida y no registrada (viajes olvidados, km mal cargados).
 
-Cuando se llena el tanque, la app puede calcular el consumo **real** del ciclo:
+### Algoritmo (`performTankAudit()`, v19.0)
 
+**Paso 1: Identificar el ciclo** — igual que antes: viajes y cargas entre las 2 ultimas cargas "tanque lleno".
+
+**Paso 2: Aprender el rinde real, CON GUARDA FISICA**
 ```
-Ciclo = todos los viajes y cargas entre dos llenados completos consecutivos
+km_l_ciclo = km_totales_del_ciclo / litros_cargados_del_ciclo
+
+SI km_l_ciclo esta fuera de [4, 25] km/l  → ciclo descartado, NO se aprende nada (data sucia)
+SINO → km_l_aprendido = promedio_movil(km_l_aprendido_previo, km_l_ciclo)
 ```
+Esta guarda es la que faltaba en el modelo viejo. Sin ella, un ciclo con cargas fuera de orden cronologico (viajes cargados despues de su tanque lleno correspondiente) puede implicar un rinde absurdo (ej: 0.5 km/l) que contaminaria toda estimacion futura.
 
-### Algoritmo (`performTankAudit()`)
-
-**Paso 1: Identificar el ciclo**
-- Busca las 2 ultimas cargas de "tanque lleno" (is_full_tank=true, liters_loaded>0)
-- Filtra viajes y cargas entre esas dos fechas usando `occurred_at` o `created_at`
-
-**Paso 2: Calcular desviacion**
+**Paso 3: Reanclar el pool a la capacidad fisica**
 ```
-litros_estimados = sum( km_viaje / consumo_teorico_por_tipo )  para cada viaje del ciclo
-litros_reales = sum( litros_cargados )  para todas las cargas del ciclo
-
-factor_desviacion = litros_reales / litros_estimados
-```
-
-**Paso 3: Ajustar cada viaje**
-```
-consumo_ajustado = consumo_teorico_por_tipo / factor_desviacion
-nuevos_litros = km / consumo_ajustado
-nuevo_costo = nuevos_litros * precio_combustible_al_momento_del_viaje
+gap_litros = pool_litros_estimado - capacidad_tanque   (>0 = se consumio sin registrar)
+precio_pool = pool_costo / pool_litros
+gap_costo = gap_litros * precio_pool
 ```
 
-**Paso 4: Marcar como reconciliado**
-- Cada viaje se actualiza con `is_reconciled = true`
-- Se guarda `original_consumption` y `real_consumption`
-- Se registra `reconciled_at`
-
-**Paso 5: Insertar ajustes en ledger (v17)**
-- Para cada piloto con viajes en el ciclo, se calcula la diferencia entre costo nuevo y viejo
-- Se inserta un `tank_audit_adjustment` proporcional a los km de ese piloto en el ciclo
-
-**Paso 6: Actualizar correction_factor del vehiculo (v17)**
+**Paso 4: Redistribuir el gap por PROMEDIO PONDERADO DE USO (suma cero)**
 ```
-correction_factor = total_litros_reales / total_litros_estimados_del_ciclo
+Para cada piloto con viajes en el ciclo:
+  ajuste_piloto = gap_costo * (km_del_piloto_en_el_ciclo / km_totales_del_ciclo)
+  ledger: { driver, type: 'tank_audit_adjustment', amount: -ajuste_piloto }
+
+pool_costo -= gap_costo    // el pool baja EXACTO lo mismo que se reparte -> Σ = pool_costo se mantiene
+pool_litros = capacidad_tanque   // reancla
 ```
 
-### Ejemplo de Reconciliacion
+**Diferencia clave vs. el modelo viejo:** el ajuste **no re-precia ningun viaje pasado** (queda tal cual se cobro). Solo agrega una entrada de ledger que corrige el balance de cada piloto — y esa entrada, sumada, es exactamente el `gap_costo` que se descuenta del pool. Nada se inventa: lo que un piloto "pierde" por el faltante es exactamente lo que el pool deja de valer.
+
+### Ejemplo
 
 ```
-Ciclo entre dos tanques llenos:
-  Viaje 1: 100 km urbano (teorico: 10.5 km/l → estimado: 9.52 litros)
-  Viaje 2: 200 km ruta (teorico: 15.0 km/l → estimado: 13.33 litros)
-  Total estimado: 22.85 litros
+Ciclo: A maneja 100 km, B maneja 300 km (400 km totales)
+Tanque lleno anterior: pool a 50 L. Se llena de nuevo: entran 20 L, pero el
+pool estimaba mas litros de los que la carga real reflejo -> faltan 8 L
+(gap_litros = 8), a precio_pool $2.500/L -> gap_costo = $20.000
 
-  Cargas en el ciclo: 25 litros reales
+Reparto por km (25% A, 75% B):
+  A: -$5.000 (ledger tank_audit_adjustment)
+  B: -$15.000 (ledger tank_audit_adjustment)
 
-  Factor: 25 / 22.85 = 1.094 (consumo real 9.4% mayor al teorico)
-
-Ajuste:
-  Viaje 1: consumo_real = 10.5 / 1.094 = 9.6 km/l → 10.42 litros
-  Viaje 2: consumo_real = 15.0 / 1.094 = 13.71 km/l → 14.59 litros
+pool_costo baja $20.000. Σ ledger sigue = pool_costo. Nada se inventa.
 ```
-
-### Verificacion de Viajes (`isTripVerified()`)
-
-Un viaje se considera "verificado" cuando:
-1. Tiene `is_reconciled = true` (fue ajustado por reconciliacion)
-2. Existe una carga de tanque lleno posterior al viaje
-
-Esto garantiza que el viaje fue incluido en al menos un ciclo completo de reconciliacion.
 
 ### Indicadores Visuales
 
-| Estado | Badge | Color |
-|--------|-------|-------|
-| Verificado | Checkmark verde | Verde |
-| Estimado | "Estimado" clickeable | Gris |
-
-Al tocar "Estimado" aparece un popup explicando que el costo es una aproximacion basada en consumo teorico.
+El badge "Estimado"/"Verificado" y `isTripVerified()` de versiones anteriores ya no aplican de la misma forma: como los viajes cobrados quedan fijos, no hay un estado "recalculado" que mostrar. El indicador relevante ahora es el badge de **rinde real aprendido** (`km_l_aprendido`) en la ficha del vehiculo.
 
 ---
 
-## 9. Memoria Reconstructiva
+## 9. Aprendizaje del Rinde (v19.0)
 
-### Aprendizaje Adaptativo del Consumo (`recalculateGlobalConsumption()`)
+> **Reemplaza a la "Memoria Reconstructiva" del modelo viejo.** `recalculateGlobalConsumption()` y `recalculateTrips()` quedan **deprecadas (no-op)** desde v19.0 — la primera aprendia sin guardas de plausibilidad (contribuyo al bug del factor 4.83); la segunda re-preciaba viajes ya cobrados, rompiendo la invariante y generando desconfianza ("¿por que cambio mi viaje de ayer?").
 
-Despues de cada reconciliacion, la app recalcula el consumo promedio historico del vehiculo:
-
-1. Identifica **todos** los ciclos cerrados (pares consecutivos de tanques llenos)
-2. Para cada ciclo: `consumo_real = km_totales / litros_totales`
-3. Promedia todos los ciclos
-4. Actualiza `vehicle.consumption` con el promedio historico
-
-Esto hace que las futuras estimaciones sean cada vez mas precisas, ya que el consumo "aprendido" se basa en datos reales acumulados.
-
-### Recalculo Global de Viajes (`recalculateTrips()`)
-
-Si se edita el vehiculo y cambia el precio o el consumo, todos sus viajes no-reconciliados se recalculan:
-
-```javascript
-// Para cada trip con is_reconciled = false:
-const nuevos_litros = trip.km / getConsumptionForDriveType(vehicle, trip.drive_type);
-const nuevo_costo = nuevos_litros * current_ppp;
-await updateTrip(trip.id, { liters: nuevos_litros, cost: nuevo_costo });
-```
+El aprendizaje del rinde real vive ahora **dentro de `performTankAudit()`** (seccion 8, Paso 2): promedio movil de `km_l_aprendido`, actualizado solo cuando el ciclo es fisicamente plausible (4-25 km/l). Editar el vehiculo (precio, consumo manual) **ya no re-precia** ningun viaje pasado — solo afecta las estimaciones de viajes futuros.
 
 ---
 
@@ -570,7 +453,7 @@ precio_efectivo = (monto - descuento) / litros
 ```
 
 Y ese neto (`monto - descuento`) se usa tambien en:
-- El **promedio ponderado del PPP** (`current_ppp`).
+- El **pool a costo** (`pool_costo`, desde v19.0 — antes era el promedio ponderado del PPP legacy).
 - El **credito `fuel_payment`** del ledger (lo que se le acredita al pagador).
 
 Solo afecta cargas CON descuento; las normales quedan identicas.
@@ -699,46 +582,46 @@ diff = (latest_price - prev_price) / prev_price * 100
 
 ## 14. Flujo Completo de la App
 
-### Registrar un Viaje
+### Registrar un Viaje (v19.0)
 
 ```
 1. Piloto selecciona vehiculo
 2. Ingresa km recorridos
 3. Selecciona tipo de manejo (Urbano/Mixto/Ruta)
-4. App calcula: litros = km / (consumo_tipo * correction_factor), costo = litros * current_ppp
-5. Se guarda en Supabase (tabla trips)
+4. App calcula: litros = km / km_l_aprendido_ajustado, costo = litros * (pool_costo/pool_litros)
+5. Se guarda en Supabase (tabla trips) — este costo queda FIJO, no se re-precia despues
 6. Se inserta ledger entry: { type: 'trip_cost', amount: -costo, ref_id: trip.id }
-7. Se actualiza vehicle.virtual_liters (resta litros consumidos)
-8. Se re-renderizan: historial, balances, Smart Card, resumen, tanque virtual
+7. Se actualiza vehicle.pool_litros (-litros) y vehicle.pool_costo (-costo)
+8. Se re-renderizan: historial, balances, Smart Card, resumen, tanque
 ```
 
-### Registrar una Carga de Combustible
+### Registrar una Carga de Combustible (v19.0)
 
 ```
 1. Piloto selecciona vehiculo
 2. Ingresa monto pagado y litros cargados
 3. Opcionalmente: marca tanque lleno, tipo factura, foto del ticket
-4. App calcula precio efectivo por litro
+4. App calcula el costo efectivo (monto - descuento, con percepciones si Factura A)
 5. Se guarda en Supabase (+ foto en Storage si existe)
-6. Se inserta ledger entry: { type: 'fuel_payment', amount: +monto, ref_id: payment.id }
-7. Se actualiza vehicle.current_ppp (promedio ponderado) y vehicle.virtual_liters
-8. Si es tanque lleno y hay ciclo completo → reconciliacion automatica
-9. Se re-renderizan: historial, balances, Smart Card, resumen, tanque virtual
+6. Se inserta ledger entry: { type: 'fuel_payment', amount: +costo_efectivo, ref_id: payment.id }
+7. Se actualiza vehicle.pool_litros (+litros) y vehicle.pool_costo (+costo_efectivo)
+8. Si es tanque lleno y hay ciclo completo → reconciliacion automatica (suma cero)
+9. Se re-renderizan: historial, balances, Smart Card, resumen, tanque
 ```
 
-### Ciclo de Reconciliacion
+### Ciclo de Reconciliacion (v19.0 — suma cero)
 
 ```
 1. Piloto carga con "Tanque lleno" activado
 2. App detecta 2 cargas de tanque lleno (actual + anterior)
 3. Identifica viajes y cargas intermedias
-4. Calcula factor de desviacion (real vs estimado)
-5. Ajusta todos los viajes del ciclo (litros y costo)
-6. Marca viajes como reconciliados (is_reconciled=true)
-7. Inserta ledger entries tipo 'tank_audit_adjustment' por piloto
-8. Actualiza vehicles.correction_factor con el factor del ciclo
-9. Recalcula vehicle.consumption con promedio de todos los ciclos historicos
-10. Actualiza balances con costos corregidos
+4. Calcula el rinde real del ciclo; SI es fisicamente plausible (4-25 km/l) actualiza
+   km_l_aprendido (promedio movil). Si no, descarta el aprendizaje (data sucia)
+5. Calcula el gap entre pool_litros estimado y la capacidad fisica
+6. Reparte el gap por PROMEDIO PONDERADO DE KM entre los pilotos del ciclo
+7. Inserta ledger entries tipo 'tank_audit_adjustment' por piloto (suma = gap_costo exacto)
+8. Descuenta gap_costo de pool_costo y reancla pool_litros = capacidad
+9. Actualiza balances — NINGUN viaje pasado se re-precia
 ```
 
 ### Saldar Deuda (v18.6)

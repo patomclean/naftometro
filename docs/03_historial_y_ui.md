@@ -2,7 +2,7 @@
 
 ## Linea de Tiempo del Proyecto
 
-El proyecto se desarrolla desde el 12 de febrero de 2026, con 40+ commits. La version actual es v18.22. La evolucion se organiza en fases:
+El proyecto se desarrolla desde el 12 de febrero de 2026, con 40+ commits. La version actual es v19.0. La evolucion se organiza en fases:
 
 ---
 
@@ -406,6 +406,35 @@ Se aplica al modal de viaje el mismo lenguaje "Express" de Cargar Nafta (mockup 
 
 ---
 
+## Fase 11: Modelo Financiero v2 — Pool a costo (Julio 2026, v19.0)
+
+Reemplazo del nucleo financiero completo. Diseno, decisiones y validacion detallados en `docs/05_modelo_financiero_v2.md` (§10-11); plan de implementacion en `docs/06_plan_implementacion_modelo_v2.md`.
+
+**Por que:** el modelo viejo (PPP con revaluo + `correction_factor`) no cerraba en suma cero (Σ balances ≠ valor fisico del tanque) y el `tank_audit_adjustment` inyectaba saldo de la nada (+$82k detectado en datos reales). Ademas, mientras se preparaba la migracion, el bug reaparecio en vivo: cargas de julio cargadas fuera de orden cronologico llevaron `correction_factor` a 4,8364, generando viajes de ~$900/km (36 km = $32.547).
+
+**v19.0 — Pool a costo (WAC):**
+- `vehicles.pool_litros` + `pool_costo` reemplazan a `current_ppp`/`virtual_liters`/`correction_factor` (deprecados, no leidos ni escritos). Precio de viaje = `pool_costo / pool_litros` — promedio ponderado a costo, metodo contable estandar (IFRS IAS2, SAP moving average).
+- `vehicles.km_l_aprendido`: rinde real con **guarda fisica de plausibilidad (4-25 km/l)** — la guarda que faltaba y que hubiera evitado el 4,83.
+- `performTankAudit()` reescrita: reconciliacion **suma cero** — el faltante de un ciclo se reparte entre pilotos por promedio ponderado de km (uso), y se descuenta del pool — ya no inventa plata.
+- Un viaje cobrado **queda fijo** — `recalculateTrips()` y `recalculateGlobalConsumption()` deprecadas (no-op).
+- `handleDeleteTrip`/`handleDeletePayment` revierten litros Y costo del pool (antes solo litros).
+- 27 tests unitarios del motor (`sim/pool_engine_test.js`): blend a costo, suma cero, borrados, settlement, 500 operaciones aleatorias sin desvio.
+
+**Migracion (Taos, ancla: tanque lleno 30-jun-2026):** saldos recalculados con el modelo "plata + km" e insertados como `ledger.type='migration_v2'` (append-only respetado). Validado en produccion: `SUM(ledger.amount) = pool_costo = $76.499,00` exacto.
+
+| Piloto | Saldo viejo (no cerraba) | Saldo v19.0 |
+|---|---:|---:|
+| PAPÁ | +$137.888 | +$182.797,76 |
+| Pato | +$122.705 | +$93.090,82 |
+| Belu | −$12.562 | +$56.062,88 |
+| Rafa | −$72.199 | −$38.110,49 |
+| Feli | −$57.545 | −$77.656,00 |
+| Marcos | −$105.142 | −$139.685,97 |
+
+**Proceso:** backup completo antes de tocar nada (`backup/2026-06-17_taos_backup.sql`); simulacro read-only (`sim/pool_sim.js`) para validar el modelo contra datos reales ANTES de escribir codigo; despliegue en orden estricto schema → datos → codigo; comunicacion al grupo en lenguaje simple (sin formulas) explicando el cambio de saldos y por que nadie pierde plata.
+
+---
+
 ## Problemas de iOS/Safari Resueltos
 
 ### 1. Texto Vertical en Fechas (v15.3 → v15.4)
@@ -453,7 +482,7 @@ Se aplica al modal de viaje el mismo lenguaje "Express" de Cargar Nafta (mockup 
 
 ---
 
-## Estructura Visual Actual (v18.22)
+## Estructura Visual Actual (v19.0)
 
 ### Vista Detalle — Sub-tabs
 

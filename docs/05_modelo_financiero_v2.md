@@ -1,6 +1,6 @@
 # Naftómetro — Modelo Financiero v2 (Documento de Diseño)
 
-> **Estado:** Diseño **decidido y validado con datos reales** (ver §10), NO implementado aún. Implementación en pausa hasta el próximo tanque lleno (ancla).
+> **Estado:** **IMPLEMENTADO Y EN PRODUCCION desde v19.0** (julio 2026). Ver §11 para el resumen de la implementacion real y los saldos de la migracion.
 > **Objetivo:** Reemplazar el modelo actual (PPP con revalúo + correction_factor) por un modelo **a costo, suma cero, transparente**, donde el que paga la nafta nunca pierde dinero.
 > **Mockups visuales:** abrir `docs/mockups/modelo_v2_mockups.html` en el navegador para ver el UX/UI con el look real de la app.
 
@@ -289,10 +289,60 @@ Simulacro read-only sobre la historia real (`sim/pool_sim.js`, fuera del repo, r
 - **Robustez:** Pato y Belu quedan estables ante cualquier supuesto; PAPÁ y Marcos dependen del ancla (litros de hoy) porque manejan casi todos los km.
 - Rinde real de ciclos cerrados: **10,33 km/l**.
 
-### 10.5 Estado e implementación
+### 10.5 Estado e implementación (histórico — ver §11 para el resultado final)
 
 Implementación **en pausa** hasta el próximo tanque lleno (auto en el taller al momento de la discusión). El **backup + el código + los tests** pueden prepararse sin riesgo; la **migración** (única escritura irreversible) se dispara recién con el ancla limpia. El simulacro `sim/pool_sim.js` es el borrador de referencia del motor.
 
 ---
 
-*Documento de diseño v1 + Adenda de decisiones (§10) — Junio 2026. Asociado a la discusión de modelo financiero post-v18.15. Decidido y validado; sin implementar.*
+## 11. Implementación real y migración (v19.0 — Julio 2026)
+
+El auto volvió del taller con el tanque cargado a full (Cerrito, 30-jun-2026, 40 L a tope) — ese fue el **ancla limpia** que destrababa la migración. Con eso:
+
+### 11.1 Ancla y saldos de migración
+
+- **Ancla:** carga id25 "Cerrito" del 30-jun-2026, 40 L a tanque lleno.
+- **Rinde real recalculado con datos de julio:** 9,90 km/l (bajó de 10,33 al sumar los ciclos nuevos).
+- **Tanque hoy:** 32,73 L → valor a costo (`pool_costo`) = **$76.499**.
+- **Saldos finales** (modelo "plata + km", auditables como `pagó − km × $235/km`):
+
+| Piloto | Saldo antes (viejo, no cerraba) | **Saldo migrado (v19.0)** |
+|---|---:|---:|
+| PAPÁ | +$137.888 | **+$182.797,76** |
+| Pato | +$122.705 | **+$93.090,82** |
+| Belu | −$12.562 | **+$56.062,88** |
+| Rafa | −$72.199 | **−$38.110,49** |
+| Feli | −$57.545 | **−$77.656,00** |
+| Marcos | −$105.142 | **−$139.685,97** |
+| **Σ** | **+$13.145 (no cerraba)** | **$76.499,00 = `pool_costo` exacto ✅** |
+
+Validado en Supabase: `SUM(ledger.amount) = pool_costo` exacto tras la migración (`suma_ledger = 76.499,00`, `pool_costo = 76.499,00`).
+
+### 11.2 Hallazgo durante la implementación: el bug reapareció con datos nuevos
+
+Antes de migrar, los viajes de julio cargados en el modelo viejo salieron con costos absurdos otra vez (ej: 36 km = $32.547, ≈$900/km) — el `correction_factor` había saltado a **4,8364** porque las cargas de tanque lleno se cargaron en la app *antes* que sus viajes correspondientes, y `performTankAudit()` (sin guardas) vio "muchos litros consumidos, pocos km" y aprendió un rinde absurdo. Esto confirmó en vivo el riesgo estructural diagnosticado en §10 y reforzó la urgencia de las guardas físicas del punto 11.3.
+
+### 11.3 Qué se implementó (código v19.0, `app.js`)
+
+- **`vehicles.pool_litros` + `pool_costo`**: única fuente de verdad del tanque. `current_ppp`, `virtual_liters`, `correction_factor` quedan **deprecados** (columnas intactas, no se leen ni escriben).
+- **`vehicles.km_l_aprendido`**: reemplaza a `correction_factor`, con **guarda física de plausibilidad (4–25 km/l)** — un ciclo con rinde implícito fuera de ese rango (data sucia) **no contamina** el aprendizaje. Esta es la guarda que falta en el modelo viejo y que causó el 11.2.
+- **`getPoolPrice()` / `getLearnedKmL()` / `calculatePoolTripCost()`**: nuevas funciones centrales del pool, con 27 tests unitarios (`sim/pool_engine_test.js`) que validan blend a costo, suma cero, borrados, settlement y 500 operaciones aleatorias sin desvío.
+- **`performTankAudit()` reescrita — reconciliación suma cero**: el gap de un ciclo se reparte entre los pilotos **proporcional a sus km** (promedio ponderado de uso) y se descuenta del `pool_costo` — ya no inyecta saldo de la nada (el bug histórico de +$82k).
+- **Un viaje cobrado queda fijo**: `recalculateTrips()` y `recalculateGlobalConsumption()` quedan deprecadas (no-op) — eran la fuente de "¿por qué cambió mi viaje de ayer?".
+- **`handleDeleteTrip` / `handleDeletePayment`**: revierten `pool_litros` **y** `pool_costo` (antes solo litros, dejando el costo descuadrado).
+- **Tank Capital** = `pool_costo` directo (mockup D: "hay $X de nafta, respaldados").
+
+### 11.4 Migración de datos (SQL, ejecutados en Supabase antes del deploy del código)
+
+1. `v19.0_modelo_v2_pool.sql` — columnas nuevas + `'migration_v2'` agregado al CHECK de `ledger.type` (append-only respetado, nada se borra).
+2. `v19.0_data_migracion_taos.sql` — inserta 1 entrada `migration_v2` por piloto (delta `saldo_correcto − saldo_actual`) + inicializa el pool (`pool_litros=32.73`, `pool_costo=76499.02→76499` redondeado, `km_l_aprendido=9.90`).
+
+**Regla de deploy respetada:** schema → datos → código, en ese orden, sin dejar producción en un estado intermedio inconsistente.
+
+### 11.5 Comunicación al grupo
+
+Los saldos migrados se comunicaron a los pilotos con una explicación en lenguaje simple (sin fórmulas): qué cambió, por qué, y por qué nadie pierde plata (el crédito por nafta se recupera al consumirse) — incluyendo el mecanismo del precio promedio (mezcla de nafta vieja/nueva) y el reparto de km faltantes por uso.
+
+---
+
+*Documento de diseño v1 + Adenda de decisiones (§10) + Implementación real (§11) — Junio-Julio 2026. Modelo v2 DECIDIDO, VALIDADO e IMPLEMENTADO en producción desde v19.0.*

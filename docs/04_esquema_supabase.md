@@ -103,16 +103,19 @@ Almacena los vehiculos registrados. Cada vehiculo tiene multiples pilotos (condu
 | `drivers` | `text[]` | NO | — | v1 | Array de nombres de pilotos |
 | `owner_id` | `uuid` | SI | `null` | v16.0 | FK a auth.users — dueno del vehiculo |
 | `invite_code` | `text` | SI | `null` | v16.2 | Codigo de invitacion unico (6 chars, UNIQUE) |
-| `current_ppp` | `numeric` | SI | `0` | v17 | Precio Promedio Ponderado actual del combustible en tanque |
-| `virtual_liters` | `numeric` | SI | `0` | v17 | Litros estimados remanentes en tanque virtual |
-| `correction_factor` | `numeric` | SI | `1.0` | v17 | Multiplicador de consumo real vs teorico |
+| `current_ppp` | `numeric` | SI | `0` | v17 | **DEPRECADO desde v19.0** — Precio Promedio Ponderado (modelo viejo). No se lee/escribe |
+| `virtual_liters` | `numeric` | SI | `0` | v17 | **DEPRECADO desde v19.0** — litros estimados (modelo viejo). No se lee/escribe |
+| `correction_factor` | `numeric` | SI | `1.0` | v17 | **DEPRECADO desde v19.0** — multiplicador de consumo (modelo viejo, sin guardas — llego a 4.83). No se lee/escribe |
 | `last_full_tank_at` | `timestamptz` | SI | `null` | v17 | Timestamp de la ultima carga de tanque lleno |
+| `pool_litros` | `numeric` | SI | `null` | v19.0 | Litros actualmente en el tanque (modelo pool a costo). Unica fuente de verdad |
+| `pool_costo` | `numeric` | SI | `null` | v19.0 | Costo real pagado por los litros del pool. Invariante: `SUM(ledger.amount) = pool_costo` |
+| `km_l_aprendido` | `numeric` | SI | `null` | v19.0 | Rinde real aprendido (km/l), con guarda de plausibilidad fisica (4-25 km/l) |
 | `created_at` | `timestamptz` | NO | `now()` | v1 | Fecha de creacion |
 
 ### Notas
-- `consumption` se inicializa con el valor teorico del `VEHICLE_DATABASE` y se actualiza con `recalculateGlobalConsumption()` despues de cada reconciliacion
-- `fuel_price` es el precio de referencia manual ingresado al crear el vehiculo; desde v17 se usa `current_ppp` para calculos
-- `correction_factor = 1.0` significa que el consumo real coincide con el teorico. Se actualiza en cada ciclo de reconciliacion
+- `consumption` se inicializa con el valor teorico del `VEHICLE_DATABASE`. Desde v19.0 ya NO se actualiza automaticamente (recalculateGlobalConsumption esta deprecada); el aprendizaje vive en `km_l_aprendido`
+- `fuel_price` es el precio de referencia manual ingresado al crear el vehiculo (legacy, ya no se usa en calculos desde v19.0 — ver `pool_costo`/`pool_litros`)
+- **v19.0:** `current_ppp`, `virtual_liters` y `correction_factor` quedan como columnas legacy (no se borran, por compatibilidad), reemplazadas por `pool_litros` + `pool_costo` + `km_l_aprendido`. Ver `docs/05` §11 y migracion `v19.0_modelo_v2_pool.sql`
 - `drivers` es un array nativo de PostgreSQL (`text[]`), no JSON
 
 ---
@@ -460,12 +463,14 @@ CREATE INDEX idx_payments_full_tank ON payments (vehicle_id, is_full_tank)
 | `v18.0_auth_and_mapping.sql` | v18.0 | Tabla profiles, trigger on_auth_user_created, tabla vehicle_driver_mappings, RLS |
 | `v18.4_data_integrity.sql` | v18.4 | Limpieza de orphans en ledger, politica DELETE en ledger, triggers BEFORE DELETE para cascade (on_trip_deleted, on_payment_deleted) |
 | `v18.5_audit_logs.sql` | v18.5 | Tabla audit_logs, triggers AFTER INSERT/DELETE en trips y payments, indice |
+| `v19.0_modelo_v2_pool.sql` | v19.0 | Nuevas columnas en vehicles (pool_litros, pool_costo, km_l_aprendido), tipo `migration_v2` agregado al CHECK de ledger.type, deprecacion de current_ppp/virtual_liters/correction_factor |
+| `v19.0_data_migracion_taos.sql` | v19.0 | Migracion de datos (one-off, no reusable): restateo de saldos via modelo plata+km para el vehiculo Taos, inicializacion del pool con ancla real |
 
 ---
 
 ## Estado de Seguridad
 
-### Estado actual (v18.22)
+### Estado actual (v19.0)
 
 - **RLS habilitado** en todas las tablas desde v16.0
 - **Auth obligatoria** para todas las operaciones desde v16.0 (politicas usan `authenticated` role)
