@@ -1,4 +1,4 @@
-console.log("🚀 Naftómetro v19.2 cargado correctamente — UI alineada al modelo pool (sin restos del PPP)");
+console.log("🚀 Naftómetro v19.3 cargado correctamente — Saldar Deuda unificado con el plan de clearing");
 
 // ============================================================
 // 1. CONSTANTS & CONFIGURATION
@@ -162,8 +162,9 @@ const state = {
   dashboardLoaded: false,
   allTrips: [],
   allPayments: [],
-  settlementMode: false,
-  settlementDriver: null,
+  settlementMode: false,   // legacy (payment modal ya no salda desde v19.3)
+  settlementDriver: null,  // legacy
+  settleDebtDebtor: null,  // v19.3: deudor activo en el modal Saldar Deuda
   editingPaymentId: null,
   editingTripId: null,
   balancesExpanded: false,
@@ -807,51 +808,113 @@ function showLessActivity() { // v18.6
 }
 
 // ============================================================
-// v18.6: SALDAR DEUDA (Settle Debt)
+// v18.6 / v19.3: SALDAR DEUDA (Settle Debt)
 // ============================================================
 
-function openSettleDebtModal() {
+// v19.3: nets por piloto desde el ledger (fuente unica de verdad)
+function getLedgerNets() {
+  const vehicle = getActiveVehicle();
+  const drivers = vehicle ? (vehicle.drivers || []) : [];
+  const nets = {};
+  drivers.forEach(d => { nets[d] = 0; });
+  state.ledger.forEach(e => {
+    if (nets[e.driver] !== undefined) nets[e.driver] += Number(e.amount);
+  });
+  Object.keys(nets).forEach(d => { nets[d] = +nets[d].toFixed(2); });
+  return nets;
+}
+
+// v19.3: plan de clearing greedy — EL MISMO algoritmo que "Liquidacion
+// sugerida" (renderClearing). Los botones de saldado sugieren lo que
+// muestra ese cuadro, para que nunca digan cosas distintas.
+function getClearingPlan() {
+  const nets = getLedgerNets();
+  const debtors = Object.entries(nets).filter(([, n]) => n < -0.01)
+    .map(([driver, n]) => ({ driver, net: +Math.abs(n).toFixed(2) }))
+    .sort((a, b) => b.net - a.net);
+  const creditors = Object.entries(nets).filter(([, n]) => n > 0.01)
+    .map(([driver, n]) => ({ driver, net: +n.toFixed(2) }))
+    .sort((a, b) => b.net - a.net);
+  const transfers = [];
+  let i = 0, j = 0;
+  while (i < debtors.length && j < creditors.length) {
+    const amount = +Math.min(debtors[i].net, creditors[j].net).toFixed(2);
+    if (amount > 0.01) transfers.push({ from: debtors[i].driver, to: creditors[j].driver, amount });
+    debtors[i].net = +(debtors[i].net - amount).toFixed(2);
+    creditors[j].net = +(creditors[j].net - amount).toFixed(2);
+    if (debtors[i].net < 0.01) i++;
+    if (creditors[j].net < 0.01) j++;
+  }
+  return transfers;
+}
+
+// v19.3: sugerir monto segun el plan de clearing para el par deudor→acreedor;
+// fallback: lo que alcance entre la deuda y el credito del acreedor.
+function suggestSettleAmount(debtor, creditor) {
+  const planMatch = getClearingPlan().find(t => t.from === debtor && t.to === creditor);
+  if (planMatch) return planMatch.amount;
+  const nets = getLedgerNets();
+  const debt = Math.abs(Math.min(nets[debtor] || 0, 0));
+  const credit = Math.max(nets[creditor] || 0, 0);
+  return +Math.min(debt, credit).toFixed(2);
+}
+
+function updateSettleDebtSuggestion() {
+  const debtor = state.settleDebtDebtor;
+  const creditor = dom.settleDebtCreditor.value;
+  if (!debtor || !creditor) return;
+  const suggested = suggestSettleAmount(debtor, creditor);
+  dom.settleDebtAmount.value = suggested > 0 ? suggested : '';
+}
+
+// v19.3: acepta un deudor arbitrario (boton "Saldar cuenta" de las balance
+// cards) — default: el piloto del usuario logueado (Smart Card / Finanzas).
+function openSettleDebtModal(debtorName) {
   const vehicle = getActiveVehicle();
   if (!vehicle) return;
-  const myDriverName = getMyDriverName(vehicle.id);
-  if (!myDriverName) return;
-
-  // Calculate my debt (negative balance)
-  let myBalance = 0;
-  if (state.ledger.length > 0) {
-    state.ledger.forEach(e => {
-      if (e.driver === myDriverName) myBalance += Number(e.amount);
-    });
+  const debtor = (typeof debtorName === 'string' && debtorName)
+    ? debtorName
+    : getMyDriverName(vehicle.id);
+  if (!debtor) {
+    showToast('No se pudo identificar tu piloto', 'error');
+    return;
   }
-  const myDebt = Math.abs(+myBalance.toFixed(2));
 
-  // Build creditors list (drivers with positive balance)
-  const netByDriver = {};
-  state.ledger.forEach(e => {
-    netByDriver[e.driver] = (netByDriver[e.driver] || 0) + Number(e.amount);
-  });
-  const creditors = Object.entries(netByDriver)
-    .filter(([driver, net]) => driver !== myDriverName && net > 0.01)
+  const nets = getLedgerNets();
+  const myDebt = +Math.abs(Math.min(nets[debtor] || 0, 0)).toFixed(2);
+  if (myDebt < 0.01) {
+    showToast(`${debtor} no tiene deuda pendiente`, 'error');
+    return;
+  }
+
+  const creditors = Object.entries(nets)
+    .filter(([driver, net]) => driver !== debtor && net > 0.01)
     .sort((a, b) => b[1] - a[1]);
-
   if (creditors.length === 0) {
     showToast('No hay acreedores en este vehiculo', 'error');
     return;
   }
 
-  // Populate select
+  state.settleDebtDebtor = debtor;
+
   dom.settleDebtCreditor.innerHTML = creditors
     .map(([driver, net]) => `<option value="${driver}">${driver} (le deben ${formatCurrency(net)})</option>`)
     .join('');
 
-  // Pre-fill amount with full debt
-  dom.settleDebtAmount.value = myDebt > 0 ? Math.round(myDebt) : '';
+  // Pre-seleccionar el acreedor que indica la Liquidacion sugerida
+  const planTransfer = getClearingPlan().find(t => t.from === debtor);
+  if (planTransfer) dom.settleDebtCreditor.value = planTransfer.to;
+  updateSettleDebtSuggestion();
+
+  const title = document.getElementById('settle-debt-title');
+  if (title) title.textContent = `Saldar cuenta de ${debtor}`;
 
   toggleHidden(dom.modalSettleDebt, false);
 }
 
 function closeSettleDebtModal() {
   toggleHidden(dom.modalSettleDebt, true);
+  state.settleDebtDebtor = null;
   document.getElementById('settle-debt-form').reset();
 }
 
@@ -861,13 +924,12 @@ async function handleSettleDebtSubmit(e) {
   if (btn.disabled) return;
   setButtonLoading(btn, true);
 
-  const vehicle = getActiveVehicle();
-  const myDriverName = getMyDriverName(vehicle.id);
+  const debtor = state.settleDebtDebtor;
   const creditor = dom.settleDebtCreditor.value.trim();
   const amount = parseFloat(dom.settleDebtAmount.value);
 
-  if (!myDriverName) {
-    showToast('No se pudo identificar tu piloto', 'error');
+  if (!debtor) {
+    showToast('No se pudo identificar al deudor', 'error');
     setButtonLoading(btn, false);
     return;
   }
@@ -876,18 +938,31 @@ async function handleSettleDebtSubmit(e) {
     setButtonLoading(btn, false);
     return;
   }
-  if (creditor === myDriverName) {
-    showToast('No puedes pagarte a vos mismo', 'error');
+  if (creditor === debtor) {
+    showToast('No puede pagarse a si mismo', 'error');
     setButtonLoading(btn, false);
     return;
   }
-  if (isNaN(amount) || amount <= 0) {
+  if (isNaN(amount) || amount < 0.01) {
     showToast('El monto debe ser mayor a cero', 'error');
     setButtonLoading(btn, false);
     return;
   }
-  if (amount < 0.01) {
-    showToast('El monto minimo es $0.01', 'error');
+
+  // v19.3: topes — nadie puede quedar en negativo artificial.
+  // Un pago mayor a la deuda le crearia credito ficticio al deudor (sin
+  // nafta que lo respalde); mayor al credito del acreedor lo dejaria
+  // debiendo y la deuda rebotaria de piloto en piloto.
+  const nets = getLedgerNets();
+  const myDebt = +Math.abs(Math.min(nets[debtor] || 0, 0)).toFixed(2);
+  const creditorNet = +Math.max(nets[creditor] || 0, 0).toFixed(2);
+  if (amount > myDebt + 0.01) {
+    showToast(`El monto supera la deuda de ${debtor} (${formatCurrency(myDebt)})`, 'error');
+    setButtonLoading(btn, false);
+    return;
+  }
+  if (amount > creditorNet + 0.01) {
+    showToast(`${creditor} solo tiene ${formatCurrency(creditorNet)} a favor — paga hasta ese monto y el resto a otro acreedor`, 'error');
     setButtonLoading(btn, false);
     return;
   }
@@ -896,7 +971,7 @@ async function handleSettleDebtSubmit(e) {
     // Double-entry: payer gets credit (positive), creditor gets debit (negative)
     await insertLedgerEntry({
       vehicle_id: state.activeVehicleId,
-      driver: myDriverName,
+      driver: debtor,
       type: 'transfer',
       amount: +amount,
       ref_id: null,
@@ -908,7 +983,7 @@ async function handleSettleDebtSubmit(e) {
       type: 'transfer',
       amount: -(+amount),
       ref_id: null,
-      description: `Pago recibido de ${myDriverName}`,
+      description: `Pago recibido de ${debtor}`,
     });
 
     // Audit log
@@ -917,7 +992,7 @@ async function handleSettleDebtSubmit(e) {
         vehicle_id: state.activeVehicleId,
         user_id: state.profile?.id || null,
         action: 'debt_settled',
-        description: `${myDriverName} le pago ${formatCurrency(amount)} a ${creditor}`,
+        description: `${debtor} le pago ${formatCurrency(amount)} a ${creditor}`,
       });
     } catch (auditErr) {
       console.warn('Audit log failed (non-critical):', auditErr.message);
@@ -2851,78 +2926,11 @@ function handleClearTripsClick() {
 
 // --- Settle Pilot Account ---
 
-// v17: Find the main creditor for a debtor
-function findMainCreditor(debtorDriver, drivers) {
-  const nets = {};
-  drivers.forEach(d => { nets[d] = 0; });
-  if (state.ledger.length > 0) {
-    state.ledger.forEach(e => { if (nets[e.driver] !== undefined) nets[e.driver] += Number(e.amount); });
-  } else {
-    state.payments.forEach(p => { if (nets[p.driver] !== undefined) nets[p.driver] += Number(p.amount); });
-    state.trips.forEach(t => { if (nets[t.driver] !== undefined) nets[t.driver] -= Number(t.cost); });
-  }
-  // Find the driver with highest positive balance (biggest creditor)
-  let maxNet = 0, creditor = null;
-  for (const [d, n] of Object.entries(nets)) {
-    if (d !== debtorDriver && n > maxNet) { maxNet = n; creditor = d; }
-  }
-  return creditor;
-}
-
+// v19.3: "Saldar cuenta" de la balance card usa el MISMO modal Saldar Deuda
+// (2 transfers limpios, sin fila payments, sin regex sobre la nota) con el
+// deudor pre-cargado y la sugerencia del plan de clearing.
 function handleClearPilotAccount(driver) {
-  const vehicle = getActiveVehicle();
-  if (!vehicle) return;
-
-  // v17: Calculate debt from ledger
-  let net = 0;
-  if (state.ledger.length > 0) {
-    state.ledger.forEach(entry => { if (entry.driver === driver) net += Number(entry.amount); });
-    net = +net.toFixed(2);
-  } else {
-    let credit = 0, debit = 0;
-    state.payments.forEach(p => { if (p.driver === driver) credit += Number(p.amount); });
-    state.trips.forEach(t => { if (t.driver === driver) debit += Number(t.cost); });
-    net = +(credit - debit).toFixed(2);
-  }
-
-  if (net >= 0) {
-    showToast(`${driver} no tiene deuda pendiente`, 'error');
-    return;
-  }
-
-  const debt = Math.abs(net);
-
-  // Abrir payment modal en modo saldado
-  state.settlementMode = true;
-  state.settlementDriver = driver;
-
-  const select = dom.paymentDriver;
-  select.innerHTML = `<option value="${driver}">${driver}</option>`;
-  select.value = driver;
-
-  dom.paymentAmount.value = debt.toFixed(2);
-  dom.paymentLiters.value = '';
-  dom.paymentPricePerLiter.value = '';
-  dom.paymentFullTank.checked = false;
-  // v17: Auto-determine creditor from balances
-  const creditorDriver = findMainCreditor(driver, vehicle.drivers || []);
-  dom.paymentNote.value = `Saldado de deuda a: ${creditorDriver || ''}`;
-
-  // v18.16: fecha + monto en CTA tambien en modo saldado
-  dom.paymentOccurredAt.value = toLocalDatetimeValue();
-  toggleHidden(dom.paymentDateField, true);
-  if (dom.btnChangeDate) toggleHidden(dom.btnChangeDate, false);
-  renderPaymentDateDisplay();
-  updatePaymentCtaAmount();
-
-  // Ocultar campos de combustible
-  document.querySelectorAll('.settlement-hide').forEach(el => el.classList.add('hidden'));
-
-  $('#payment-modal-title').textContent = `Saldar cuenta de ${driver}`;
-  const btnText = dom.btnSubmitPayment.querySelector('.btn-text');
-  if (btnText) btnText.textContent = 'Registrar saldo';
-
-  toggleHidden(dom.paymentModal, false);
+  openSettleDebtModal(driver);
 }
 
 // --- Payment Modal ---
@@ -3157,11 +3165,12 @@ async function handlePaymentSubmit(e) {
   let litersLoaded = parseFloat(dom.paymentLiters.value) || null;
   let pricePerLiter = parseFloat(dom.paymentPricePerLiter.value) || null;
   const isFullTank = dom.paymentFullTank.checked;
-  const isSettlement = state.settlementMode;
+  // v19.3: el payment modal es SOLO para cargas — los saldados van por el
+  // modal Saldar Deuda (2 transfers limpios, sin fila payments).
 
   // v11: Modo Distraído — si no hay litros ni precio, estimar con fuel_price actual
   const originalLiters = litersLoaded;
-  if (!isSettlement && amount > 0 && !litersLoaded && !pricePerLiter) {
+  if (amount > 0 && !litersLoaded && !pricePerLiter) {
     const vehicle = getActiveVehicle();
     const refPrice = getLatestFuelPrice(vehicle);
     if (refPrice > 0) {
@@ -3174,14 +3183,14 @@ async function handlePaymentSubmit(e) {
 
   try {
     // v10: Compute fiscal breakdown
-    const isFacturaA = isSettlement ? false : dom.paymentFacturaA.checked;
-    const discountAmount = isSettlement ? 0 : getDiscountAmount(amount); // v18.17: respeta unidad $/%
+    const isFacturaA = dom.paymentFacturaA.checked;
+    const discountAmount = getDiscountAmount(amount); // v18.17: respeta unidad $/%
     const invoiceType = isFacturaA ? 'Factura A' : 'Ticket';
 
     let fiscalPerceptions = 0;
     let effectivePrice = null;
 
-    if (!isSettlement && litersLoaded && litersLoaded > 0 && amount > 0) {
+    if (litersLoaded && litersLoaded > 0 && amount > 0) {
       const breakdown = calculateFiscalBreakdown(amount, litersLoaded, isFacturaA, discountAmount);
       fiscalPerceptions = +breakdown.taxPerceptions.toFixed(2);
       effectivePrice = +breakdown.effectivePrice.toFixed(2);
@@ -3197,12 +3206,12 @@ async function handlePaymentSubmit(e) {
       driver,
       amount,
       note: dom.paymentNote.value.trim() || null,
-      liters_loaded: isSettlement ? null : litersLoaded,
-      price_per_liter: isSettlement ? null : (effectivePrice || pricePerLiter),
-      is_full_tank: isSettlement ? false : isFullTank,
-      invoice_type: isSettlement ? 'Ticket' : invoiceType,
-      tax_perceptions: isSettlement ? 0 : fiscalPerceptions,
-      discount_amount: isSettlement ? 0 : discountAmount,
+      liters_loaded: litersLoaded,
+      price_per_liter: effectivePrice || pricePerLiter,
+      is_full_tank: isFullTank,
+      invoice_type: invoiceType,
+      tax_perceptions: fiscalPerceptions,
+      discount_amount: discountAmount,
       occurred_at: occurredAt,
     };
 
@@ -3266,51 +3275,29 @@ async function handlePaymentSubmit(e) {
     } else {
       const createdPayment = await createPayment(paymentData);
 
-      // v17: Insert ledger entries
-      if (isSettlement) {
-        // Double-entry for settlements
-        const creditorMatch = (dom.paymentNote.value || '').match(/Saldado de deuda a:\s*(.+)/i);
-        const creditorDriver = creditorMatch ? creditorMatch[1].trim() : null;
-        await insertLedgerEntry({
-          vehicle_id: state.activeVehicleId, driver,
-          type: 'transfer', amount: +amount,
-          ref_id: createdPayment.id,
-          description: creditorDriver ? `Saldo pagado a ${creditorDriver}` : 'Transferencia'
-        });
-        if (creditorDriver) {
-          await insertLedgerEntry({
-            vehicle_id: state.activeVehicleId, driver: creditorDriver,
-            type: 'transfer', amount: -(+amount),
-            ref_id: createdPayment.id,
-            description: `Saldo recibido de ${driver}`
-          });
-        }
-        showToast(`Saldo de ${formatCurrency(amount)} registrado para ${driver}`);
-      } else {
-        // Fuel payment = credit (v18.17: neto del descuento/reintegro)
-        await insertLedgerEntry({
-          vehicle_id: state.activeVehicleId, driver,
-          type: 'fuel_payment', amount: +(amount - discountAmount),
-          ref_id: createdPayment.id,
-          description: litersLoaded ? `Carga ${litersLoaded} lts` : `Pago combustible`
-        });
-        // v19: la carga entra al pool — litros + costo EFECTIVO (neto de
-        // descuento, con percepciones de Factura A incluidas en el monto).
-        // Mismo neto que el credito del ledger -> conserva la invariante.
-        if (litersLoaded && litersLoaded > 0) {
-          const poolVehicle = getActiveVehicle();
-          if (poolVehicle) {
-            await applyPoolDelta(poolVehicle, litersLoaded, amount - discountAmount);
-            if (isFullTank) {
-              await updateVehicle(poolVehicle.id, { last_full_tank_at: paymentData.occurred_at });
-            }
+      // v17: Fuel payment = credit (v18.17: neto del descuento/reintegro)
+      await insertLedgerEntry({
+        vehicle_id: state.activeVehicleId, driver,
+        type: 'fuel_payment', amount: +(amount - discountAmount),
+        ref_id: createdPayment.id,
+        description: litersLoaded ? `Carga ${litersLoaded} lts` : `Pago combustible`
+      });
+      // v19: la carga entra al pool — litros + costo EFECTIVO (neto de
+      // descuento, con percepciones de Factura A incluidas en el monto).
+      // Mismo neto que el credito del ledger -> conserva la invariante.
+      if (litersLoaded && litersLoaded > 0) {
+        const poolVehicle = getActiveVehicle();
+        if (poolVehicle) {
+          await applyPoolDelta(poolVehicle, litersLoaded, amount - discountAmount);
+          if (isFullTank) {
+            await updateVehicle(poolVehicle.id, { last_full_tank_at: paymentData.occurred_at });
           }
         }
-        if (!originalLiters) {
-          showToast(`Carga registrada (${litersLoaded} lts estimados a ${formatCurrency(pricePerLiter)}/l)`);
-        } else {
-          showToast('Carga registrada');
-        }
+      }
+      if (!originalLiters) {
+        showToast(`Carga registrada (${litersLoaded} lts estimados a ${formatCurrency(pricePerLiter)}/l)`);
+      } else {
+        showToast('Carga registrada');
       }
     }
     haptic();
@@ -3324,13 +3311,11 @@ async function handlePaymentSubmit(e) {
     // v19: el pool ya se actualizo al crear la carga (applyPoolDelta).
     // Aca solo refrescamos la UI y, si fue tanque lleno, corre la
     // reconciliacion SUMA CERO (reancla litros y aprende el rinde real).
-    if (!isSettlement) {
-      state.vehicles = await fetchVehicles();
-      renderVehicleDetail();
-      renderVehicleCards();
-      if (isNewPayment && isFullTank) {
-        await performTankAudit();
-      }
+    state.vehicles = await fetchVehicles();
+    renderVehicleDetail();
+    renderVehicleCards();
+    if (isNewPayment && isFullTank) {
+      await performTankAudit();
     }
   } catch (err) {
     showToast('Error: ' + err.message, 'error');
@@ -4656,6 +4641,8 @@ async function init() {
   document.getElementById('btn-close-settle-debt').addEventListener('click', closeSettleDebtModal);
   dom.modalSettleDebt.addEventListener('click', (e) => { if (e.target === dom.modalSettleDebt) closeSettleDebtModal(); });
   document.getElementById('settle-debt-form').addEventListener('submit', handleSettleDebtSubmit);
+  // v19.3: al cambiar de acreedor, sugerir el monto del plan de clearing
+  dom.settleDebtCreditor.addEventListener('change', updateSettleDebtSuggestion);
 
   // v18: Logout — clear cached state (preserve pending invite in localStorage)
   document.getElementById('btn-logout').addEventListener('click', async () => {

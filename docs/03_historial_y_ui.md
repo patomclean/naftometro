@@ -2,7 +2,7 @@
 
 ## Linea de Tiempo del Proyecto
 
-El proyecto se desarrolla desde el 12 de febrero de 2026, con 40+ commits. La version actual es v19.2. La evolucion se organiza en fases:
+El proyecto se desarrolla desde el 12 de febrero de 2026, con 40+ commits. La version actual es v19.3. La evolucion se organiza en fases:
 
 ---
 
@@ -441,6 +441,15 @@ Una revision post-deploy encontro 3 escenarios que rompian `SUM(ledger) = pool_c
 - **Editar carga**: par `fuel_payment` (−neto viejo al piloto viejo, +neto nuevo al nuevo) + `applyPoolDelta` del delta. Antes editar el monto y borrar la carga descuadraba el pool.
 - **Editar viaje**: cambio de piloto solo → mueve el debito con costo FIJO (pool intacto); cambio de km/tipo de manejo → devuelve litros/costo al pool y re-precia al precio del pool post-reversion. Solo metadatos (nota/fecha) → sin entradas.
 - Validado con `sim/edit_flows_test.js`: 20 asserts + fuzz de 300 operaciones aleatorias mezclando crear/editar/borrar/limpiar — desvio final $0,00. Commit `c2371bb`.
+
+**v19.3 — Saldar Deuda unificado con el plan de clearing (Julio 2026):**
+
+Analisis del centro de finanzas encontro que los 2 flujos de saldado se contradecian y uno podia romper la invariante:
+- **Bug critico eliminado**: el "Saldar cuenta" de las balance cards abria el payment modal en modo settlement y recuperaba al acreedor parseando la NOTA con regex (`Saldado de deuda a: X`). La nota era editable → si el usuario la cambiaba, se insertaba un `transfer` aislado (la deuda desaparecia sin bajar el credito de nadie → invariante rota). Todo el modo settlement del payment modal fue eliminado.
+- **Flujo unico**: ambos botones usan ahora el modal Saldar Deuda (2 transfers limpios, `ref_id: null`, sin fila `payments`), que acepta un deudor arbitrario (`openSettleDebtModal(driver)`).
+- **Sugerencia = Liquidacion sugerida**: el acreedor y monto pre-cargados salen del MISMO algoritmo greedy (`getClearingPlan()`) que el cuadro "Liquidacion sugerida" — antes la card mandaba el 100% de la deuda al acreedor mas rico (`findMainCreditor`, eliminada), lo que podia dejar a un acreedor en negativo (ej: PAPÁ recibiendo $217k con credito de $182k).
+- **Topes**: el monto no puede superar la deuda del deudor ni el credito actual del acreedor (nadie queda en negativo artificial ni con credito ficticio sin nafta que lo respalde).
+- Los saldados legacy ya guardados en `payments` se siguen renderizando (solo cambio como se crean los nuevos).
 
 **v19.2 — UI alineada al modelo pool (Julio 2026):**
 
