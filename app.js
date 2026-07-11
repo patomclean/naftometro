@@ -1,4 +1,4 @@
-console.log("🚀 Naftómetro v18.22 cargado correctamente");
+console.log("🚀 Naftómetro v19.0 cargado correctamente — Modelo v2: pool a costo");
 
 // ============================================================
 // 1. CONSTANTS & CONFIGURATION
@@ -53,6 +53,59 @@ function getDriveTypeEmoji(driveType) {
   if (driveType === 'Urbano') return '🏙️';
   if (driveType === 'Ruta')   return '🏁';
   return '🛣️';
+}
+
+// ============================================================
+// v19.0 — MODELO V2: POOL A COSTO (WAC)
+// El tanque es un pool con dos numeros: pool_litros + pool_costo.
+// Precio de un viaje = pool_costo / pool_litros (promedio ponderado
+// A COSTO de la nafta mezclada — sin revaluo, sin correction_factor).
+// Invariante que TODO write debe preservar: SUM(ledger) = pool_costo.
+// ============================================================
+
+// Precio actual del pool ($/litro). Fallback: ultimo precio de carga
+// (pool vacio o vehiculo aun sin cargas).
+function getPoolPrice(vehicle) {
+  const litros = Number(vehicle.pool_litros) || 0;
+  const costo = Number(vehicle.pool_costo) || 0;
+  if (litros > 0.5 && costo > 0) return costo / litros;
+  return getLatestFuelPrice(vehicle);
+}
+
+// Rinde a usar para estimar litros de un viaje. Ancla el rinde REAL
+// aprendido (ciclos cerrados tanque lleno->lleno) y lo modula por tipo
+// de manejo manteniendo la relacion teorica Urbano/Mixto/Ruta del modelo.
+function getLearnedKmL(vehicle, driveType) {
+  const theoretical = getConsumptionForDriveType(vehicle, driveType);
+  const learned = Number(vehicle.km_l_aprendido) || 0;
+  if (learned > 0) {
+    const theoreticalMixed = getConsumptionForDriveType(vehicle, 'Mixto');
+    if (theoreticalMixed > 0) return +(learned * (theoretical / theoreticalMixed)).toFixed(2);
+    return learned;
+  }
+  return theoretical;
+}
+
+// Litros y costo de un viaje segun el pool. El costo queda FIJO una vez
+// cobrado (no se re-precia nunca — a diferencia del modelo viejo).
+function calculatePoolTripCost(vehicle, km, driveType) {
+  const kmL = getLearnedKmL(vehicle, driveType);
+  const liters = kmL > 0 ? km / kmL : 0;
+  const price = getPoolPrice(vehicle);
+  const cost = liters * price;
+  return { liters: +liters.toFixed(2), cost: +cost.toFixed(2), price, kmL };
+}
+
+// Aplica un delta al pool y lo persiste. NO clampa pool_costo: la
+// conservacion (SUM ledger = pool_costo) esta por encima de la cosmetica;
+// el clamp visual se hace solo al MOSTRAR el tanque.
+async function applyPoolDelta(vehicle, deltaLitros, deltaCosto) {
+  const newL = +((Number(vehicle.pool_litros) || 0) + deltaLitros).toFixed(2);
+  const newC = +((Number(vehicle.pool_costo) || 0) + deltaCosto).toFixed(2);
+  await updateVehicle(vehicle.id, { pool_litros: newL, pool_costo: newC });
+  vehicle.pool_litros = newL;
+  vehicle.pool_costo = newC;
+  return { newL, newC };
 }
 
 // v14.6: Temporal helpers
@@ -441,9 +494,16 @@ function calculateFiscalBreakdown(amount, liters, isFacturaA, discount) {
 }
 
 // v14.6: Calculate virtual tank level — resets at last full tank
+// v19: si el vehiculo esta migrado al pool, el nivel ES pool_litros
+// (unica fuente de verdad). El clamp es solo visual — el pool interno
+// no se clampa para preservar la conservacion.
 function calculateTankLevel() {
   const vehicle = getActiveVehicle();
   const tankCap = vehicle ? getVehicleTankCapacity(vehicle) : null;
+
+  if (vehicle && vehicle.pool_litros !== null && vehicle.pool_litros !== undefined) {
+    return clampTankLiters(vehicle, vehicle.pool_litros);
+  }
 
   // Find the last full-tank payment by occurred_at
   const lastFullTank = state.payments
@@ -1207,23 +1267,13 @@ async function deleteTripsForVehicle(vehicleId) {
 }
 
 // v13: Drive-type aware recalculation
+// v19: ELIMINADO. Re-preciaba TODOS los viajes (incluso los reconciliados)
+// al editar el vehiculo — rompia la invariante SUM(ledger) = pool_costo y
+// era una fuente de desconfianza ("¿por que cambio mi viaje de ayer?").
+// En el modelo v2 un viaje cobrado queda FIJO. Se conserva como no-op por
+// si quedara alguna referencia.
 async function recalculateTrips(vehicleId, vehiclePayload) {
-  const { data: trips, error: fetchErr } = await db
-    .from('trips')
-    .select('*')
-    .eq('vehicle_id', vehicleId);
-  if (fetchErr) throw fetchErr;
-
-  for (const trip of trips) {
-    const driveType = trip.drive_type || 'Mixto';
-    const consumption = getConsumptionForDriveType(vehiclePayload, driveType);
-    const { liters, cost } = calculateCost(trip.km, consumption, vehiclePayload.fuel_price);
-    const { error } = await db
-      .from('trips')
-      .update({ liters, cost })
-      .eq('id', trip.id);
-    if (error) throw error;
-  }
+  console.warn('recalculateTrips() esta deprecada desde v19.0 (modelo pool): los viajes cobrados no se re-precian.');
 }
 
 async function fetchLastTrips(vehicleIds) {
@@ -1421,16 +1471,18 @@ function renderVehicleDetail() {
     dom.vehicleConsumptionBadge.textContent = vehicle.consumption + ' km/l';
   }
   dom.vehicleFuelTypeBadge.textContent = vehicle.fuel_type;
-  const latestPrice = getLatestFuelPrice(vehicle);
+  // v19: el precio mostrado es el del pool a costo (lo que vale la nafta
+  // que hay en el tanque), no el de la ultima carga.
+  const latestPrice = getPoolPrice(vehicle);
   dom.vehicleFuelPriceBadge.textContent = formatCurrency(latestPrice) + '/l';
 
-  const mixedConsumption = spec ? spec.mixed_km_l : vehicle.consumption;
-  const costPerKm = latestPrice / mixedConsumption;
+  const displayKmL = getLearnedKmL(vehicle, 'Mixto');
+  const costPerKm = latestPrice / displayKmL;
   dom.vehicleCostKmBadge.textContent = formatCurrency(costPerKm) + '/km';
 
-  // v14.1: Show learned consumption if it differs from spec
-  if (spec && Math.abs(vehicle.consumption - spec.mixed_km_l) > 0.3) {
-    dom.vehicleLearnedBadge.textContent = `📊 Consumo histórico real: ${vehicle.consumption} km/l`;
+  // v19: mostrar el rinde real aprendido (km_l_aprendido) si existe
+  if (Number(vehicle.km_l_aprendido) > 0) {
+    dom.vehicleLearnedBadge.textContent = `📊 Rinde real aprendido: ${vehicle.km_l_aprendido} km/l`;
     toggleHidden(dom.vehicleLearnedBadge, false);
   } else {
     toggleHidden(dom.vehicleLearnedBadge, true);
@@ -1921,8 +1973,13 @@ function renderTankCapital() {
     return;
   }
 
-  const fuelPrice = getLatestFuelPrice(vehicle);
-  const capitalValue = +(level * fuelPrice).toFixed(2);
+  // v19: el valor del tanque a costo ES pool_costo — la plata real que se
+  // pago por la nafta que queda (garantia "respaldado": se recupera al
+  // consumirse). Fallback legacy si el vehiculo no esta migrado.
+  const fuelPrice = getPoolPrice(vehicle);
+  const capitalValue = (vehicle.pool_costo !== null && vehicle.pool_costo !== undefined)
+    ? +Number(vehicle.pool_costo).toFixed(2)
+    : +(level * fuelPrice).toFixed(2);
 
   // Find who paid for fuel since last full-tank
   const lastFullTank = state.payments
@@ -2672,11 +2729,8 @@ async function handleVehicleSubmit(e) {
 
       await updateVehicle(editId, payload);
 
-      if (oldVehicle &&
-        (oldVehicle.fuel_price !== payload.fuel_price ||
-          oldVehicle.consumption !== payload.consumption)) {
-        await recalculateTrips(editId, payload);
-      }
+      // v19: cambiar precio/consumo del vehiculo YA NO re-precia viajes
+      // pasados (viaje cobrado queda fijo). Solo afecta estimaciones futuras.
 
       showToast('Vehiculo actualizado');
       haptic();
@@ -3159,12 +3213,11 @@ async function handlePaymentSubmit(e) {
     }
 
     // v12: Update existing or create new
+    const isNewPayment = !state.editingPaymentId; // v19: el pool solo se toca al CREAR
     if (state.editingPaymentId) {
       await updatePayment(state.editingPaymentId, paymentData);
       showToast('Carga actualizada');
-      // v14.5: Recalculate global consumption after editing a payment
       state.payments = await fetchPayments(state.activeVehicleId);
-      await recalculateGlobalConsumption();
     } else {
       const createdPayment = await createPayment(paymentData);
 
@@ -3196,6 +3249,18 @@ async function handlePaymentSubmit(e) {
           ref_id: createdPayment.id,
           description: litersLoaded ? `Carga ${litersLoaded} lts` : `Pago combustible`
         });
+        // v19: la carga entra al pool — litros + costo EFECTIVO (neto de
+        // descuento, con percepciones de Factura A incluidas en el monto).
+        // Mismo neto que el credito del ledger -> conserva la invariante.
+        if (litersLoaded && litersLoaded > 0) {
+          const poolVehicle = getActiveVehicle();
+          if (poolVehicle) {
+            await applyPoolDelta(poolVehicle, litersLoaded, amount - discountAmount);
+            if (isFullTank) {
+              await updateVehicle(poolVehicle.id, { last_full_tank_at: paymentData.occurred_at });
+            }
+          }
+        }
         if (!originalLiters) {
           showToast(`Carga registrada (${litersLoaded} lts estimados a ${formatCurrency(pricePerLiter)}/l)`);
         } else {
@@ -3211,57 +3276,14 @@ async function handlePaymentSubmit(e) {
     renderPaymentHistory();
     closePaymentModal();
 
-    // Solo para cargas reales de combustible (no saldados)
+    // v19: el pool ya se actualizo al crear la carga (applyPoolDelta).
+    // Aca solo refrescamos la UI y, si fue tanque lleno, corre la
+    // reconciliacion SUMA CERO (reancla litros y aprende el rinde real).
     if (!isSettlement) {
-      // v17: PPP Persistente (Precio Promedio Ponderado)
-      if (litersLoaded && litersLoaded > 0) {
-        const vehicle = getActiveVehicle();
-        if (vehicle) {
-          let oldPPP = vehicle.current_ppp > 0 ? vehicle.current_ppp : getLatestFuelPrice(vehicle);
-          // v18.15: clamp oldLiters a la capacidad real. Un virtual_liters corrupto
-          // (ej: 80.091) no debe dominar el promedio ponderado y hundir el PPP.
-          const oldLiters = clampTankLiters(vehicle, vehicle.virtual_liters || 0);
-          const newTotalLiters = oldLiters + litersLoaded;
-          const loadPrice = effectivePrice || pricePerLiter || null;
-          // v18.15: si el PPP guardado es basura (implausiblemente bajo vs el precio
-          // de esta carga, ej: $2 vs $2461), no contaminar el blend con el — el
-          // combustible existente casi seguro se compro a precio de mercado.
-          if (loadPrice && oldPPP > 0 && oldPPP < loadPrice * 0.1) {
-            oldPPP = loadPrice;
-          }
-          let newPPP;
-          if (newTotalLiters <= 0) {
-            newPPP = loadPrice || vehicle.fuel_price;
-          } else {
-            // v18.17: el descuento/reintegro baja el costo que entra al promedio
-            newPPP = +((oldLiters * oldPPP + (amount - discountAmount)) / newTotalLiters).toFixed(2);
-          }
-          // v18.15: piso de sanidad. Si el PPP calculado quedo absurdamente bajo
-          // respecto al precio de esta carga, hubo corrupcion: usar el precio de carga.
-          if (loadPrice && newPPP < loadPrice * 0.2) {
-            newPPP = +Number(loadPrice).toFixed(2);
-          }
-          const updates = {
-            current_ppp: newPPP,
-            virtual_liters: clampTankLiters(vehicle, newTotalLiters),
-            fuel_price: newPPP // mantener compatibilidad
-          };
-          if (isFullTank) {
-            const tankCap = getVehicleTankCapacity(vehicle);
-            if (tankCap) {
-              updates.virtual_liters = tankCap;
-              updates.last_full_tank_at = paymentData.occurred_at;
-            }
-          }
-          await updateVehicle(state.activeVehicleId, updates);
-          state.vehicles = await fetchVehicles();
-          renderVehicleDetail();
-          renderVehicleCards();
-        }
-      }
-
-      // Auto-corrección de consumo si fue tanque lleno
-      if (isFullTank) {
+      state.vehicles = await fetchVehicles();
+      renderVehicleDetail();
+      renderVehicleCards();
+      if (isNewPayment && isFullTank) {
         await performTankAudit();
       }
     }
@@ -3274,121 +3296,94 @@ async function handlePaymentSubmit(e) {
 
 // --- v14.1: Tank Reconciliation & Adaptive Learning ---
 
+// v19: Reconciliacion SUMA CERO sobre el pool.
+// Al cerrar un ciclo (tanque lleno), el tanque fisico esta en capacidad.
+// 1) Aprende el rinde real del ciclo (km / litros cargados), con guardas
+//    de plausibilidad fisica — el correction_factor sin guardas del modelo
+//    viejo llego a 4.83 y genero viajes de $900/km.
+// 2) Reancla pool_litros = capacidad. El costo del gap (nafta consumida
+//    no registrada) se debita a los pilotos del ciclo PROPORCIONAL A SUS
+//    KM (promedio ponderado de uso) y se descuenta del pool_costo, asi
+//    la invariante SUM(ledger) = pool_costo se conserva EXACTA.
+// 3) NO re-precia viajes pasados (un viaje cobrado queda fijo).
 async function performTankAudit() {
   const vehicle = getActiveVehicle();
   if (!vehicle) return;
+  if (vehicle.pool_litros === null || vehicle.pool_litros === undefined) return; // no migrado
 
   const tankCap = getVehicleTankCapacity(vehicle);
   if (!tankCap) return;
 
-  // v14.6: Use occurred_at for chronological ordering
   const fullTankLoads = state.payments
     .filter(p => p.is_full_tank && p.liters_loaded > 0)
     .sort((a, b) => getEventDate(b) - getEventDate(a));
-
-  if (fullTankLoads.length < 2) return;
+  if (fullTankLoads.length === 0) return;
 
   const latest = fullTankLoads[0];
-  const previous = fullTankLoads[1];
   const latestDate = getEventDate(latest);
-  const previousDate = getEventDate(previous);
+  const previous = fullTankLoads[1] || null;
+  const previousDate = previous ? getEventDate(previous) : null;
 
-  const cycleTrips = state.trips.filter(t => {
+  // Viajes y cargas del ciclo cerrado (entre los 2 ultimos tanques llenos)
+  const cycleTrips = previous ? state.trips.filter(t => {
     const d = getEventDate(t);
     return d > previousDate && d <= latestDate;
-  });
-  const totalKm = cycleTrips.reduce((sum, t) => sum + Number(t.km), 0);
-  if (totalKm <= 0) return;
+  }) : [];
+  const cycleKm = cycleTrips.reduce((s, t) => s + Number(t.km), 0);
+  const cycleLiters = previous ? state.payments
+    .filter(p => p.liters_loaded > 0 && getEventDate(p) > previousDate && getEventDate(p) <= latestDate)
+    .reduce((s, p) => s + Number(p.liters_loaded), 0) : 0;
 
-  const cycleLoads = state.payments.filter(p => {
-    if (!p.liters_loaded || p.liters_loaded <= 0) return false;
-    const d = getEventDate(p);
-    return d > previousDate && d <= latestDate;
-  });
-  const realLitersConsumed = cycleLoads.reduce((sum, p) => sum + Number(p.liters_loaded), 0);
-  if (realLitersConsumed <= 0) return;
-
-  const fuelPrice = getLatestFuelPrice(vehicle);
-
-  // v14.3: Drive-type-aware deviation factor
-  const estimatedLitersConsumed = cycleTrips.reduce((sum, t) => {
-    const consumption = getConsumptionForDriveType(vehicle, t.drive_type);
-    return sum + (t.km / consumption);
-  }, 0);
-  if (estimatedLitersConsumed <= 0) return;
-
-  const deviationFactor = realLitersConsumed / estimatedLitersConsumed;
-  const realConsumption = +(totalKm / realLitersConsumed).toFixed(1);
-
-  // Phase 1: Reconciliation — recalculate cycle trips respecting drive_type
-  let totalOldCost = 0;
-  let totalNewCost = 0;
-
-  for (const trip of cycleTrips) {
-    totalOldCost += Number(trip.cost);
-    const originalConsumption = getConsumptionForDriveType(vehicle, trip.drive_type);
-    const adjustedConsumption = +(originalConsumption / deviationFactor).toFixed(1);
-    const newLiters = +(trip.km / adjustedConsumption).toFixed(2);
-    const newCost = +(newLiters * fuelPrice).toFixed(2);
-    totalNewCost += newCost;
-
-    // v14.4: Primary update — core fields that exist since v14.1
-    const { error: primaryErr } = await db.from('trips')
-      .update({ liters: newLiters, cost: newCost, is_reconciled: true })
-      .eq('id', trip.id);
-
-    if (primaryErr) {
-      console.error('Reconciliation primary update failed:', trip.id, primaryErr);
-      window.alert(`Error de reconciliación en viaje ${trip.id}: ${primaryErr.message || JSON.stringify(primaryErr)}`);
-      continue;
-    }
-
-    // v14.4: Secondary update — metadata for popup (may fail if columns missing)
-    const { error: metaErr } = await db.from('trips')
-      .update({
-        reconciled_at: new Date().toISOString(),
-        original_consumption: originalConsumption,
-        real_consumption: adjustedConsumption,
-      })
-      .eq('id', trip.id);
-
-    if (metaErr) {
-      console.warn('Reconciliation metadata update failed:', trip.id, metaErr);
+  // --- 1) Aprender rinde real (solo con datos plausibles) ---
+  let learnedNow = null;
+  if (cycleKm > 30 && cycleLiters > 5) {
+    const cycleKmL = cycleKm / cycleLiters;
+    // Guarda fisica: un auto real rinde entre 4 y 25 km/l. Fuera de eso,
+    // el ciclo esta sucio (viajes sin cargar / flag mal puesto): NO aprender.
+    if (cycleKmL >= 4 && cycleKmL <= 25) {
+      const prev = Number(vehicle.km_l_aprendido) || 0;
+      learnedNow = prev > 0 ? +((prev + cycleKmL) / 2).toFixed(2) : +cycleKmL.toFixed(2);
+      await updateVehicle(vehicle.id, { km_l_aprendido: learnedNow });
+      vehicle.km_l_aprendido = learnedNow;
     }
   }
 
-  const adjustmentAmount = +(totalNewCost - totalOldCost).toFixed(2);
-  state.trips = await fetchTrips(state.activeVehicleId);
+  // --- 2) Reanclar el pool a la capacidad fisica (suma cero) ---
+  const poolL = Number(vehicle.pool_litros) || 0;
+  const poolC = Number(vehicle.pool_costo) || 0;
+  const poolPrice = poolL > 0.5 && poolC > 0 ? poolC / poolL : getLatestFuelPrice(vehicle);
+  const gapL = +(poolL - tankCap).toFixed(2);        // >0 = consumo no registrado
+  let gapCost = +(gapL * poolPrice).toFixed(2);
 
-  // v17: Insert ledger tank_audit_adjustment entries per driver (proportional to km driven)
-  if (Math.abs(adjustmentAmount) > 0.01) {
+  let redistributed = false;
+  if (Math.abs(gapCost) > 0.01 && cycleKm > 0) {
+    // Debito proporcional a los km de cada piloto en el ciclo
     const driverKm = {};
     cycleTrips.forEach(t => { driverKm[t.driver] = (driverKm[t.driver] || 0) + Number(t.km); });
-    const totalCycleKm = Object.values(driverKm).reduce((a, b) => a + b, 0);
     for (const [drv, km] of Object.entries(driverKm)) {
-      const proportion = km / totalCycleKm;
-      const driverAdj = +(adjustmentAmount * proportion).toFixed(2);
+      const driverAdj = +(gapCost * (km / cycleKm)).toFixed(2);
       if (Math.abs(driverAdj) > 0.01) {
         await insertLedgerEntry({
           vehicle_id: vehicle.id, driver: drv,
           type: 'tank_audit_adjustment',
-          amount: -(+driverAdj),
-          description: `Ajuste auditoria tanque (factor: ${deviationFactor.toFixed(3)})`
+          amount: -driverAdj,
+          description: `Reconciliacion tanque lleno: ${gapL > 0 ? 'faltaron' : 'sobraron'} ${Math.abs(gapL)} L (reparto por km)`
         });
       }
     }
+    redistributed = true;
     state.ledger = await fetchLedger(state.activeVehicleId);
   }
 
-  // v17: Update correction_factor (Total Real Liters / Total Theoretical Liters)
-  const newCorrectionFactor = +(deviationFactor).toFixed(4);
-  await updateVehicle(state.activeVehicleId, { correction_factor: newCorrectionFactor });
+  // Reanclar. Si se redistribuyo, el pool baja/sube el mismo gapCost que
+  // el ledger (invariante intacta). Si NO se pudo atribuir (sin viajes en
+  // el ciclo), el costo queda en el pool y el precio lo absorbe.
+  const newPoolC = redistributed ? +(poolC - gapCost).toFixed(2) : poolC;
+  await updateVehicle(vehicle.id, { pool_litros: tankCap, pool_costo: newPoolC });
+  vehicle.pool_litros = tankCap;
+  vehicle.pool_costo = newPoolC;
 
-  // Phase 2: Reconstructive memory — recalculate from all closed cycles
-  await recalculateGlobalConsumption();
-
-  state.vehicles = await fetchVehicles(); // v17: refresh correction_factor
-  // Re-render
+  state.vehicles = await fetchVehicles();
   renderTrips();
   renderSummary();
   renderBalances();
@@ -3396,72 +3391,24 @@ async function performTankAudit() {
   renderPaymentHistory();
 
   // Notification
-  if (Math.abs(adjustmentAmount) > 0.01) {
-    const sign = adjustmentAmount > 0 ? '+' : '';
+  if (redistributed) {
     showToast(
-      `Reconciliación: ${sign}${formatCurrency(adjustmentAmount)} ajustados · Consumo real: ${realConsumption} km/l`,
-      adjustmentAmount > 0 ? 'error' : 'success'
+      `Tanque reconciliado: ${gapL > 0 ? 'faltaban' : 'sobraban'} ${Math.abs(gapL)} L (${formatCurrency(Math.abs(gapCost))}) repartidos por km` +
+      (learnedNow ? ` · Rinde real: ${learnedNow} km/l` : ''),
+      gapL > 0 ? 'error' : 'success'
     );
-  } else {
-    showToast(`Consumo verificado: ${realConsumption} km/l`);
+  } else if (learnedNow) {
+    showToast(`Consumo verificado: ${learnedNow} km/l`);
   }
 }
 
 // v14.5: Reconstructive memory — recalculate consumption from ALL closed cycles
+// v19: ELIMINADA. Aprendia el rinde de ciclos SIN guardas de plausibilidad
+// (con data sucia llevo consumption a 9.4 y contribuyo al factor 4.83).
+// El aprendizaje ahora vive en performTankAudit() con guardas fisicas y
+// se persiste en km_l_aprendido. Se conserva como no-op por seguridad.
 async function recalculateGlobalConsumption() {
-  const vehicle = getActiveVehicle();
-  if (!vehicle) return;
-  const spec = VEHICLE_DATABASE[vehicle.model];
-  if (!spec) return;
-
-  // v14.6: Use occurred_at for chronological ordering
-  const fullTanks = state.payments
-    .filter(p => p.is_full_tank && p.liters_loaded > 0)
-    .sort((a, b) => getEventDate(a) - getEventDate(b));
-
-  if (fullTanks.length < 2) {
-    if (vehicle.consumption !== spec.mixed_km_l) {
-      await updateVehicle(state.activeVehicleId, { consumption: spec.mixed_km_l });
-      state.vehicles = await fetchVehicles();
-      renderVehicleDetail();
-    }
-    return;
-  }
-
-  let totalKmAllCycles = 0;
-  let totalLitersAllCycles = 0;
-
-  for (let i = 1; i < fullTanks.length; i++) {
-    const prevDate = getEventDate(fullTanks[i - 1]);
-    const currDate = getEventDate(fullTanks[i]);
-
-    const cycleKm = state.trips
-      .filter(t => { const d = getEventDate(t); return d > prevDate && d <= currDate; })
-      .reduce((sum, t) => sum + Number(t.km), 0);
-
-    const cycleLiters = state.payments
-      .filter(p => {
-        if (!p.liters_loaded || p.liters_loaded <= 0) return false;
-        const d = getEventDate(p);
-        return d > prevDate && d <= currDate;
-      })
-      .reduce((sum, p) => sum + Number(p.liters_loaded), 0);
-
-    if (cycleKm > 0 && cycleLiters > 0) {
-      totalKmAllCycles += cycleKm;
-      totalLitersAllCycles += cycleLiters;
-    }
-  }
-
-  if (totalKmAllCycles <= 0 || totalLitersAllCycles <= 0) return;
-
-  const globalConsumption = +(totalKmAllCycles / totalLitersAllCycles).toFixed(1);
-
-  if (vehicle.consumption !== globalConsumption) {
-    await updateVehicle(state.activeVehicleId, { consumption: globalConsumption });
-    state.vehicles = await fetchVehicles();
-    renderVehicleDetail();
-  }
+  console.warn('recalculateGlobalConsumption() esta deprecada desde v19.0: el rinde se aprende en performTankAudit() (km_l_aprendido).');
 }
 
 // --- Payment Delete ---
@@ -3478,7 +3425,16 @@ function handleDeletePayment(payment) {
     const btn = dom.btnConfirmOk;
     setButtonLoading(btn, true);
     try {
+      const vehicleBeforeDelete = getActiveVehicle();
       await deletePayment(payment.id);
+      // v19: revertir el pool — el cascade trigger borro la entrada
+      // fuel_payment del ledger (Σ baja el neto), el pool debe bajar
+      // los litros y el mismo neto. Los "saldados" (sin litros) no
+      // tocan el pool: su par transfer suma 0.
+      if (vehicleBeforeDelete && Number(payment.liters_loaded) > 0) {
+        const neto = Number(payment.amount) - (Number(payment.discount_amount) || 0);
+        await applyPoolDelta(vehicleBeforeDelete, -Number(payment.liters_loaded), -neto);
+      }
       // v15: Cleanup photo from storage (best-effort)
       if (payment.photo_url) {
         try {
@@ -3502,8 +3458,6 @@ function handleDeletePayment(payment) {
       renderBalances();
       renderPaymentHistory();
       renderVehicleDetail();
-      // v14.5: Recalculate global consumption after deleting a payment
-      await recalculateGlobalConsumption();
       toggleHidden(dom.confirmModal, true);
     } catch (err) {
       showToast('Error: ' + err.message, 'error');
@@ -3607,15 +3561,12 @@ function handleTripKmInput() {
   updateTripCtaKm();
   if (vehicle && km > 0) {
     const driveType = dom.tripDriveType ? dom.tripDriveType.value : 'Mixto';
-    const consumption = getConsumptionForDriveType(vehicle, driveType);
-    // v17: Use PPP and correction_factor in preview
-    const tripPrice = vehicle.current_ppp > 0 ? vehicle.current_ppp : getLatestFuelPrice(vehicle);
-    const corrFactor = vehicle.correction_factor || 1.0;
-    const { liters, cost } = calculateCost(km, consumption, tripPrice, corrFactor);
+    // v19: preview con la MISMA matematica del pool que usa el guardado
+    const { liters, cost, price, kmL } = calculatePoolTripCost(vehicle, km, driveType);
     if (dom.costPreviewKm) dom.costPreviewKm.textContent = `${Number(km.toFixed(1))} km`;
     if (dom.costPreviewLitros) dom.costPreviewLitros.textContent = `~${liters.toFixed(1)} L`;
     dom.costPreviewValue.textContent = formatCurrency(cost);
-    if (dom.costPreviewSrc) dom.costPreviewSrc.textContent = `a ${formatCurrency(tripPrice)}/l · consumo ${driveType} (${consumption} km/l)`;
+    if (dom.costPreviewSrc) dom.costPreviewSrc.textContent = `a ${formatCurrency(price)}/l · consumo ${driveType} (${kmL} km/l)`;
     toggleHidden(dom.costPreview, false);
   } else {
     dom.costPreviewValue.textContent = '$0,00';
@@ -3649,11 +3600,8 @@ async function handleTripSubmit(e) {
 
   // v13: Drive type selection
   const driveType = dom.tripDriveType ? dom.tripDriveType.value : 'Mixto';
-  const consumption = getConsumptionForDriveType(vehicle, driveType);
-  // v17: Use PPP as price source, correction_factor for adjusted consumption
-  const tripPrice = vehicle.current_ppp > 0 ? vehicle.current_ppp : getLatestFuelPrice(vehicle);
-  const corrFactor = vehicle.correction_factor || 1.0;
-  const { liters, cost } = calculateCost(km, consumption, tripPrice, corrFactor);
+  // v19: costo desde el pool a costo (sin PPP ni correction_factor)
+  const { liters, cost } = calculatePoolTripCost(vehicle, km, driveType);
 
   // v14.6: Temporal dimension
   const occurredAt = dom.tripOccurredAt.value
@@ -3669,12 +3617,17 @@ async function handleTripSubmit(e) {
   try {
     // v12: Update existing or create new
     if (state.editingTripId) {
+      // v19: un viaje COBRADO queda fijo — no se re-precia al editar (el
+      // ledger y el pool ya registraron su costo original; re-preciar aca
+      // romperia la invariante SUM(ledger) = pool_costo). Se actualizan solo
+      // los metadatos. Para corregir km/costo: eliminar y recrear el viaje.
+      const originalTrip = state.trips.find(t => t.id === state.editingTripId);
       await updateTrip(state.editingTripId, {
         driver,
         km,
         note: dom.tripNote.value.trim() || null,
-        liters,
-        cost,
+        liters: originalTrip ? originalTrip.liters : liters,
+        cost: originalTrip ? originalTrip.cost : cost,
         drive_type: driveType,
         occurred_at: occurredAt,
       });
@@ -3699,10 +3652,8 @@ async function handleTripSubmit(e) {
         ref_id: createdTrip.id,
         description: `Viaje ${km} km (${driveType})`
       });
-      // v17: Decrease virtual liters (v18.15: clamp a [0, capacidad])
-      const newVL = clampTankLiters(vehicle, (vehicle.virtual_liters || 0) - liters);
-      await updateVehicle(state.activeVehicleId, { virtual_liters: newVL });
-      vehicle.virtual_liters = newVL;
+      // v19: el viaje saca litros y costo del pool (conserva SUM ledger = pool_costo)
+      await applyPoolDelta(vehicle, -liters, -cost);
       showToast('Viaje registrado');
     }
     haptic();
@@ -3736,13 +3687,15 @@ async function handleDeleteTrip(tripId) {
     showToast('Viaje eliminado');
     haptic();
 
-    // Restituir los litros consumidos al tanque virtual
-    if (deletedTrip && vehicleBeforeDelete && Number(deletedTrip.liters) > 0) {
-      const restoredVL = clampTankLiters(
+    // v19: restituir litros Y costo al pool. El cascade trigger ya borro la
+    // entrada trip_cost del ledger (Σ ledger sube +cost), asi que el pool
+    // debe subir lo mismo para conservar SUM(ledger) = pool_costo.
+    if (deletedTrip && vehicleBeforeDelete) {
+      await applyPoolDelta(
         vehicleBeforeDelete,
-        (vehicleBeforeDelete.virtual_liters || 0) + Number(deletedTrip.liters)
+        Number(deletedTrip.liters) || 0,
+        Number(deletedTrip.cost) || 0
       );
-      await updateVehicle(state.activeVehicleId, { virtual_liters: restoredVL });
     }
 
     // v18.4: Full state reload — cascade trigger deletes ledger rows,
