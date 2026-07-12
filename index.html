@@ -13,7 +13,7 @@
   <link rel="manifest" href="manifest.json">
   <link rel="apple-touch-icon" href="icons/icon-192.svg">
   <link rel="icon" type="image/svg+xml" href="icons/icon-192.svg">
-  <link rel="stylesheet" href="style.css?v=19.4">
+  <link rel="stylesheet" href="style.css?v=19.5">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 </head>
@@ -150,6 +150,7 @@
                 <h4 class="payments-title">Cargas de combustible</h4>
               </div>
               <div id="payments-list" class="payments-list"></div>
+              <button type="button" id="btn-more-payments" class="btn-load-more hidden">Ver cargas anteriores</button>
               <div id="payments-empty" class="empty-state-sm hidden">
                 <p>No hay cargas registradas.</p>
               </div>
@@ -158,8 +159,9 @@
             <div class="glass-card">
               <div class="section-header">
                 <h3>Historial de viajes</h3>
-                <button id="btn-clear-trips" class="btn btn-danger btn-sm">Limpiar viajes</button>
               </div>
+              <!-- v19.5: filtro por piloto -->
+              <div id="trip-filter-chips" class="trip-filter-chips hidden"></div>
               <div id="trips-loading" class="loading-spinner hidden">
                 <div class="spinner"></div>
                 <span>Cargando...</span>
@@ -174,11 +176,8 @@
                       <th>Fecha</th>
                       <th>Piloto</th>
                       <th>Km</th>
-                      <th>Litros</th>
-                      <th>Costo</th>
-                      <th></th>
+                      <th>Costo <button type="button" id="pool-info-btn" class="pool-info-btn" title="Como se calcula el costo">&#9432;</button></th>
                       <th>Nota</th>
-                      <th></th>
                     </tr>
                   </thead>
                   <tbody id="trips-tbody"></tbody>
@@ -402,6 +401,10 @@
           <span class="btn-text">Guardar</span>
           <span class="btn-loader hidden"></span>
         </button>
+        <!-- v19.5: zona de peligro (solo en modo edicion) -->
+        <div id="vehicle-danger-zone" class="vehicle-danger-zone hidden">
+          <button type="button" id="btn-clear-trips" class="btn-danger-link">&#128465; Eliminar todo el historial de viajes&hellip;</button>
+        </div>
       </form>
     </div>
   </div>
@@ -775,6 +778,6 @@
   <!-- Toast Container -->
   <div id="toast-container" class="toast-container"></div>
 
-  <script src="app.js?v=19.4"></script>
+  <script src="app.js?v=19.5"></script>
 </body>
 </html>

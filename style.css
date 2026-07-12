@@ -2814,3 +2814,166 @@ input[type="datetime-local"] {
   min-height: 0; padding: 0; margin: 0; border: none; background: transparent;
   opacity: 0; cursor: pointer; -webkit-appearance: none; appearance: none;
 }
+
+/* ============================================================
+   v19.5 — Historial compacto: meses colapsables, filas expandibles,
+   filtro por piloto, cargas colapsables, zona de peligro
+   ============================================================ */
+
+/* Filtro por piloto */
+.trip-filter-chips {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.75rem;
+}
+.tf-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.3rem 0.75rem;
+  border-radius: 999px;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+.tf-chip.active {
+  color: var(--text-primary);
+  border-color: var(--chip-color, var(--color-primary));
+  background: rgba(124, 92, 252, 0.12);
+}
+.tf-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+/* Encabezados de mes colapsables */
+.trip-month-row td {
+  padding: 0.6rem 0.4rem 0.4rem;
+  border-bottom: 1px solid var(--glass-border);
+  cursor: pointer;
+  user-select: none;
+}
+.trip-month-row.current td { cursor: default; }
+.tm-caret {
+  display: inline-block;
+  margin-right: 0.35rem;
+  color: var(--text-muted);
+  transition: transform 0.15s;
+}
+.trip-month-row.open .tm-caret { transform: rotate(90deg); }
+.tm-label {
+  font-weight: 600;
+  font-size: 0.82rem;
+  color: var(--text-primary);
+  margin-right: 0.5rem;
+}
+.tm-summary {
+  color: var(--text-muted);
+  font-size: 0.72rem;
+}
+
+/* Filas de viaje: 1 linea + detalle expandible */
+.trip-row { cursor: pointer; }
+.trip-row:active { background: rgba(255, 255, 255, 0.03); }
+.trip-caret {
+  float: right;
+  color: var(--text-muted);
+  opacity: 0.55;
+  font-size: 0.9rem;
+  margin-left: 0.4rem;
+  transition: transform 0.15s;
+}
+.trip-row-open .trip-caret {
+  transform: rotate(90deg);
+  display: inline-block;
+  float: none;
+}
+.trip-row-open td { border-bottom: none; }
+.trip-detail-row td {
+  padding: 0.25rem 0.4rem 0.7rem;
+  border-bottom: 1px solid var(--glass-border);
+}
+.trip-detail {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+.trip-detail-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 0.3rem;
+}
+
+/* Boton "ver mas" (viajes y cargas) */
+.btn-load-more {
+  display: block;
+  width: 100%;
+  margin: 0.6rem 0 0.2rem;
+  padding: 0.55rem;
+  background: var(--glass-bg);
+  border: 1px dashed var(--glass-border);
+  border-radius: 10px;
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+.btn-load-more:hover {
+  color: var(--text-primary);
+  border-color: var(--color-primary);
+}
+
+/* Info del precio pool en el header de la tabla */
+.pool-info-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.85rem;
+  padding: 0 0.1rem;
+  vertical-align: baseline;
+}
+.pool-info-btn:hover { color: var(--text-primary); }
+
+/* Cargas compactas: acciones ocultas hasta tocar la card */
+.pay-collapsible { cursor: pointer; }
+.pay-collapsible .payment-footer { display: none; }
+.pay-collapsible.pay-open .payment-footer {
+  display: flex;
+  gap: 0.35rem;
+  align-items: center;
+}
+
+/* Zona de peligro en el modal de vehiculo */
+.vehicle-danger-zone {
+  margin-top: 1rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid var(--glass-border);
+  text-align: center;
+}
+.btn-danger-link {
+  background: none;
+  border: none;
+  color: var(--color-danger);
+  opacity: 0.85;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+.btn-danger-link:hover {
+  opacity: 1;
+  text-decoration: underline;
+}
+
+/* Mobile: detalle y encabezados de mes como bloques */
+@media (max-width: 480px) {
+  .trip-month-row td,
+  .trip-detail-row td { display: block; }
+  .trip-detail-actions .btn-icon { min-width: 44px; min-height: 44px; }
+}

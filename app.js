@@ -1,4 +1,4 @@
-console.log("🚀 Naftómetro v19.4 cargado correctamente — Smart Card con desglose + feed completo + RPCs atomicas");
+console.log("🚀 Naftómetro v19.5 cargado correctamente — Historial compacto: meses colapsables, filtro por piloto");
 
 // ============================================================
 // 1. CONSTANTS & CONFIGURATION
@@ -188,6 +188,10 @@ const state = {
   settlementMode: false,   // legacy (payment modal ya no salda desde v19.3)
   settlementDriver: null,  // legacy
   settleDebtDebtor: null,  // v19.3: deudor activo en el modal Saldar Deuda
+  tripsShowAll: false,        // v19.5: "ver mas" del mes actual (viajes)
+  tripFilterDriver: null,     // v19.5: filtro por piloto en el historial
+  expandedTripMonths: {},     // v19.5: meses historicos expandidos
+  paymentsShowAll: false,     // v19.5: "ver mas" de cargas
   editingPaymentId: null,
   editingTripId: null,
   balancesExpanded: false,
@@ -1633,7 +1637,7 @@ function renderVehicleDetail() {
     dom.tankLitersLabel.textContent = tankCap
       ? `${tankLevel.toFixed(1)} / ${tankCap} lts`
       : `${tankLevel.toFixed(1)} lts`;
-    dom.tankPriceLabel.textContent = `Precio Prom: ${formatCurrency(latestPrice)}/l`;
+    dom.tankPriceLabel.textContent = `Precio del pool: ${formatCurrency(latestPrice)}/l`;
     toggleHidden(dom.tankIndicator, false);
   } else {
     toggleHidden(dom.tankIndicator, true);
@@ -1688,14 +1692,110 @@ function isTripVerified(trip) {
   );
 }
 
+// v19.5: historial compacto — meses colapsables con resumen, "ver mas" en
+// el mes actual, filas de 1 linea con detalle expandible (acciones ocultas)
+// y filtro por piloto. Sin esto, con ~10 viajes/mes la lista se vuelve un
+// scroll infinito en un año.
+const TRIPS_PAGE_SIZE = 10;
+
+function monthKeyOf(d) {
+  return d.getFullYear() + '-' + String(d.getMonth()).padStart(2, '0');
+}
+function monthLabelOf(d) {
+  const l = d.toLocaleDateString('es-AR', { month: 'long', year: 'numeric' });
+  return l.charAt(0).toUpperCase() + l.slice(1);
+}
+
+function renderTripFilterChips() {
+  const el = document.getElementById('trip-filter-chips');
+  if (!el) return;
+  const vehicle = getActiveVehicle();
+  const drivers = vehicle ? (vehicle.drivers || []) : [];
+  if (state.trips.length === 0 || drivers.length < 2) {
+    toggleHidden(el, true);
+    return;
+  }
+  const chips = [
+    `<button type="button" class="tf-chip${!state.tripFilterDriver ? ' active' : ''}" data-driver="">Todos</button>`,
+  ];
+  drivers.forEach((d, i) => {
+    const color = PILOT_COLORS[i % PILOT_COLORS.length];
+    const active = state.tripFilterDriver === d;
+    chips.push(
+      `<button type="button" class="tf-chip${active ? ' active' : ''}" data-driver="${d}" style="--chip-color:${color}">` +
+      `<span class="tf-dot" style="background:${color}"></span>${d}</button>`
+    );
+  });
+  el.innerHTML = chips.join('');
+  toggleHidden(el, false);
+}
+
+// Fila principal (1 linea) + fila de detalle expandible con litros, tipo
+// de manejo y las acciones (editar/eliminar fuera de la vista directa =
+// menos ruido visual y cero borrados accidentales).
+function buildTripRow(trip, vehicleDrivers) {
+  const driverIdx = vehicleDrivers.indexOf(trip.driver);
+  const pilotColor = PILOT_COLORS[driverIdx >= 0 ? driverIdx % PILOT_COLORS.length : 0];
+
+  const tr = document.createElement('tr');
+  tr.className = 'trip-row';
+  tr.innerHTML = `
+    <td data-label="Fecha ">${formatDate(trip.occurred_at || trip.created_at)}</td>
+    <td data-label="Piloto " style="color:${pilotColor};font-weight:600">${trip.driver}</td>
+    <td data-label="Km ">${Number(trip.km).toLocaleString('es-AR')}</td>
+    <td data-label="Costo "><strong>${formatCurrency(trip.cost)}</strong>${isTripVerified(trip) ? '<span class="reconciled-check" title="Precio verificado">✓</span>' : ''}</td>
+    <td data-label="Nota " class="trip-note">${trip.note || '-'}<span class="trip-caret">&#8250;</span></td>
+  `;
+  const reconBadge = tr.querySelector('.reconciled-check');
+  if (reconBadge) {
+    reconBadge.addEventListener('click', (e) => {
+      e.stopPropagation();
+      showReconciliationBreakdown(trip);
+    });
+  }
+
+  const detail = document.createElement('tr');
+  detail.className = 'trip-detail-row hidden';
+  const td = document.createElement('td');
+  td.colSpan = 5;
+  td.innerHTML = `
+    <div class="trip-detail">
+      <span class="meta-pill">${getDriveTypeEmoji(trip.drive_type)} ${trip.drive_type || 'Mixto'}</span>
+      <span class="meta-pill">${Number(trip.liters).toFixed(2)} lts</span>
+      <span class="trip-detail-actions"></span>
+    </div>
+  `;
+  const actions = td.querySelector('.trip-detail-actions');
+  const editBtn = document.createElement('button');
+  editBtn.className = 'btn-icon btn-icon-edit';
+  editBtn.title = 'Editar viaje';
+  editBtn.innerHTML = '&#9998;';
+  editBtn.addEventListener('click', () => openTripModal(trip));
+  actions.appendChild(editBtn);
+  const deleteBtn = document.createElement('button');
+  deleteBtn.className = 'btn-icon btn-icon-danger';
+  deleteBtn.title = 'Eliminar viaje';
+  deleteBtn.innerHTML = '&#128465;';
+  deleteBtn.addEventListener('click', () => handleDeleteTrip(trip.id));
+  actions.appendChild(deleteBtn);
+  detail.appendChild(td);
+
+  tr.addEventListener('click', () => {
+    detail.classList.toggle('hidden');
+    tr.classList.toggle('trip-row-open');
+  });
+
+  return [tr, detail];
+}
+
 function renderTrips() {
-  const trips = state.trips;
   const vehicle = getActiveVehicle();
   const vehicleDrivers = vehicle ? (vehicle.drivers || []) : [];
 
   toggleHidden(dom.tripsLoading, true);
+  renderTripFilterChips();
 
-  if (trips.length === 0) {
+  if (state.trips.length === 0) {
     toggleHidden(dom.tripsEmpty, false);
     toggleHidden(dom.tripsTable, true);
     return;
@@ -1703,59 +1803,80 @@ function renderTrips() {
 
   toggleHidden(dom.tripsEmpty, true);
   toggleHidden(dom.tripsTable, false);
-
   dom.tripsTbody.innerHTML = '';
 
-  let currentGroup = '';
+  const filtered = state.tripFilterDriver
+    ? state.trips.filter(t => t.driver === state.tripFilterDriver)
+    : state.trips;
 
-  trips.forEach((trip) => {
-    const group = getDateGroup(trip.occurred_at || trip.created_at);
-    if (group !== currentGroup) {
-      currentGroup = group;
-      const groupRow = document.createElement('tr');
-      groupRow.innerHTML = `<td colspan="8" class="trip-date-group">${group}</td>`;
-      dom.tripsTbody.appendChild(groupRow);
-    }
-
-    const driverIdx = vehicleDrivers.indexOf(trip.driver);
-    const pilotColor = PILOT_COLORS[driverIdx >= 0 ? driverIdx % PILOT_COLORS.length : 0];
+  if (filtered.length === 0) {
     const tr = document.createElement('tr');
-    tr.innerHTML = `
-      <td data-label="Fecha ">${formatDate(trip.occurred_at || trip.created_at)}</td>
-      <td data-label="Piloto " style="color:${pilotColor};font-weight:600">${trip.driver}</td>
-      <td data-label="Km ">${Number(trip.km).toLocaleString('es-AR')}</td>
-      <td data-label="Litros ">${Number(trip.liters).toFixed(2)}</td>
-      <td data-label="Costo "><strong>${formatCurrency(trip.cost)}</strong>${isTripVerified(trip) ? '<span class="reconciled-check" title="Precio verificado">✓</span>' : '<span class="estimated-price" title="Precio del pool">Pool</span>'}</td>
-      <td data-label="Tipo ">${getDriveTypeEmoji(trip.drive_type)}</td>
-      <td data-label="Nota " class="trip-note" title="${trip.note || ''}">${trip.note || '-'}</td>
-      <td></td>
-    `;
-    // v14.2: Reconciliation check click handler
-    const reconBadge = tr.querySelector('.reconciled-check');
-    if (reconBadge) {
-      reconBadge.addEventListener('click', () => showReconciliationBreakdown(trip));
-    }
-    // v15.1: Estimated price popup
-    const estimatedBadge = tr.querySelector('.estimated-price');
-    if (estimatedBadge) {
-      estimatedBadge.addEventListener('click', () => showEstimatedExplanation());
-    }
-    // v12: Edit button for trips
-    const editBtn = document.createElement('button');
-    editBtn.className = 'btn-icon btn-icon-edit';
-    editBtn.title = 'Editar viaje';
-    editBtn.innerHTML = '&#9998;';
-    editBtn.addEventListener('click', () => openTripModal(trip));
-    tr.lastElementChild.appendChild(editBtn);
-
-    const deleteBtn = document.createElement('button');
-    deleteBtn.className = 'btn-icon btn-icon-danger';
-    deleteBtn.title = 'Eliminar viaje';
-    deleteBtn.innerHTML = '&#128465;';
-    deleteBtn.addEventListener('click', () => handleDeleteTrip(trip.id));
-    tr.lastElementChild.appendChild(deleteBtn);
-
+    tr.innerHTML = `<td colspan="5" class="trip-date-group">Sin viajes de ${state.tripFilterDriver}</td>`;
     dom.tripsTbody.appendChild(tr);
+    return;
+  }
+
+  const sorted = [...filtered].sort((a, b) => getEventDate(b) - getEventDate(a));
+  const nowKey = monthKeyOf(new Date());
+
+  // Particionar por mes (ya en orden descendente)
+  const monthOrder = [];
+  const byMonth = {};
+  sorted.forEach(t => {
+    const k = monthKeyOf(getEventDate(t));
+    if (!byMonth[k]) { byMonth[k] = []; monthOrder.push(k); }
+    byMonth[k].push(t);
+  });
+
+  monthOrder.forEach(k => {
+    const monthTrips = byMonth[k];
+    const isCurrent = k === nowKey;
+    const expanded = isCurrent || !!state.expandedTripMonths[k];
+    const totKm = monthTrips.reduce((s, t) => s + Number(t.km), 0);
+    const totCost = monthTrips.reduce((s, t) => s + Number(t.cost), 0);
+    const label = monthLabelOf(getEventDate(monthTrips[0]));
+
+    const head = document.createElement('tr');
+    head.className = 'trip-month-row' + (isCurrent ? ' current' : '') + (expanded ? ' open' : '');
+    head.innerHTML = `<td colspan="5">
+      ${isCurrent ? '' : '<span class="tm-caret">&#8250;</span>'}
+      <span class="tm-label">${label}</span>
+      <span class="tm-summary">${monthTrips.length} viaje${monthTrips.length !== 1 ? 's' : ''} &middot; ${totKm.toLocaleString('es-AR')} km &middot; ${formatCurrency(totCost)}</span>
+    </td>`;
+    if (!isCurrent) {
+      head.addEventListener('click', () => {
+        state.expandedTripMonths[k] = !state.expandedTripMonths[k];
+        renderTrips();
+      });
+    }
+    dom.tripsTbody.appendChild(head);
+
+    if (!expanded) return;
+
+    let visible = monthTrips;
+    let hiddenCount = 0;
+    if (isCurrent && !state.tripsShowAll && monthTrips.length > TRIPS_PAGE_SIZE) {
+      visible = monthTrips.slice(0, TRIPS_PAGE_SIZE);
+      hiddenCount = monthTrips.length - TRIPS_PAGE_SIZE;
+    }
+    visible.forEach(t => {
+      const [row, detailRow] = buildTripRow(t, vehicleDrivers);
+      dom.tripsTbody.appendChild(row);
+      dom.tripsTbody.appendChild(detailRow);
+    });
+    if (hiddenCount > 0) {
+      const more = document.createElement('tr');
+      const mtd = document.createElement('td');
+      mtd.colSpan = 5;
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'btn-load-more';
+      btn.textContent = `Ver ${hiddenCount} viaje${hiddenCount !== 1 ? 's' : ''} mas`;
+      btn.addEventListener('click', () => { state.tripsShowAll = true; renderTrips(); });
+      mtd.appendChild(btn);
+      more.appendChild(mtd);
+      dom.tripsTbody.appendChild(more);
+    }
   });
 }
 
@@ -2113,50 +2234,55 @@ function renderTankCapital() {
     ? +Number(vehicle.pool_costo).toFixed(2)
     : +(level * fuelPrice).toFixed(2);
 
-  // Find who paid for fuel since last full-tank
-  const lastFullTank = state.payments
-    .filter(p => p.is_full_tank && p.liters_loaded > 0)
-    .sort((a, b) => getEventDate(b) - getEventDate(a))[0];
-
-  const contributions = {};
-  const cutoffDate = lastFullTank ? getEventDate(lastFullTank) : new Date(0);
-
-  state.payments.forEach(p => {
-    if (p.liters_loaded > 0) {
-      const pDate = getEventDate(p);
-      if (pDate >= cutoffDate) {
-        contributions[p.driver] = (contributions[p.driver] || 0) + Number(p.liters_loaded);
-      }
-    }
-  });
-
-  const contributors = Object.entries(contributions)
+  // v19.5: los "dueños" de la nafta del tanque son los ACREEDORES del ledger
+  // (mismo criterio que el desglose de la Smart Card). Antes se derivaba de
+  // quien cargo desde el ultimo tanque lleno, lo que contradecia los saldos
+  // (decia "pagados por PAPA" cuando el credito era de PAPA, Pato y Belu).
+  const nets = getLedgerNets();
+  const creditors = Object.entries(nets)
+    .filter(([, n]) => n > 0.01)
     .sort((a, b) => b[1] - a[1])
-    .map(([driver]) => driver);
+    .map(([d]) => d);
 
-  const mainContributor = contributors.length > 0
-    ? contributors.join(' y ')
-    : 'los pilotos';
+  let ownersText;
+  if (creditors.length === 0) ownersText = 'los pilotos';
+  else if (creditors.length === 1) ownersText = creditors[0];
+  else ownersText = creditors.slice(0, -1).join(', ') + ' y ' + creditors[creditors.length - 1];
 
   dom.tankCapitalText.textContent =
-    `El auto tiene ${level.toFixed(1)} litros valorados en ${formatCurrency(capitalValue)} que fueron pagados por ${mainContributor}.`;
+    `El auto tiene ${level.toFixed(1)} litros valorados en ${formatCurrency(capitalValue)} — credito de ${ownersText}.`;
 
   toggleHidden(dom.tankCapitalSection, false);
 }
 
+const PAYMENTS_PAGE_SIZE = 5;
+
 function renderPaymentHistory() {
   // v18.9: Only real fuel loads (liters_loaded > 0) — excludes transfers, settlements, adjustments
-  const payments = state.payments.filter(p => Number(p.liters_loaded) > 0);
+  const allPayments = state.payments.filter(p => Number(p.liters_loaded) > 0);
   const vehicle = getActiveVehicle();
   const vehicleDrivers = vehicle ? (vehicle.drivers || []) : [];
   dom.paymentsList.innerHTML = '';
+  const morePayBtn = document.getElementById('btn-more-payments');
 
-  if (payments.length === 0) {
+  if (allPayments.length === 0) {
     toggleHidden(dom.paymentsEmpty, false);
+    if (morePayBtn) toggleHidden(morePayBtn, true);
     return;
   }
 
   toggleHidden(dom.paymentsEmpty, true);
+
+  // v19.5: mostrar las ultimas 5 + "Ver mas" (las cargas viejas casi nunca
+  // se consultan, pero apilaban scroll sin limite)
+  const payments = state.paymentsShowAll
+    ? allPayments
+    : allPayments.slice(0, PAYMENTS_PAGE_SIZE);
+  const hiddenPays = allPayments.length - payments.length;
+  if (morePayBtn) {
+    morePayBtn.textContent = `Ver ${hiddenPays} carga${hiddenPays !== 1 ? 's' : ''} anterior${hiddenPays !== 1 ? 'es' : ''}`;
+    toggleHidden(morePayBtn, hiddenPays <= 0);
+  }
 
   payments.forEach((p) => {
     const item = document.createElement('div');
@@ -2240,8 +2366,20 @@ function renderPaymentHistory() {
     deleteBtn.title = 'Eliminar carga';
     deleteBtn.innerHTML = '&times;';
     deleteBtn.style.fontSize = '1.1rem';
-    deleteBtn.addEventListener('click', () => handleDeletePayment(p));
+    deleteBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      handleDeletePayment(p);
+    });
     btnTarget.appendChild(deleteBtn);
+
+    // v19.5: card compacta — las acciones (footer) aparecen al tocar la card
+    if (!isSettlement) {
+      item.classList.add('pay-collapsible');
+      item.addEventListener('click', (e) => {
+        if (e.target.closest('button')) return;
+        item.classList.toggle('pay-open');
+      });
+    }
 
     dom.paymentsList.appendChild(item);
   });
@@ -2723,6 +2861,11 @@ function renderPriceTrend() {
 async function selectVehicle(vehicleId) {
   state.activeVehicleId = vehicleId;
   state.lastVisitedVehicleId = vehicleId;
+  // v19.5: resetear vistas de historial al cambiar de vehiculo
+  state.tripsShowAll = false;
+  state.tripFilterDriver = null;
+  state.expandedTripMonths = {};
+  state.paymentsShowAll = false;
   renderVehicleDetail();
 
   // v18.5: Always open on Resumen tab when switching vehicle
@@ -2819,6 +2962,9 @@ function openVehicleModal(mode, vehicleData) {
     addDriverInput('');
     addDriverInput('');
   }
+
+  // v19.5: zona de peligro (limpiar historial) solo en modo edicion
+  toggleHidden(document.getElementById('vehicle-danger-zone'), mode !== 'edit');
 
   toggleHidden(dom.vehicleModal, false);
 }
@@ -2953,9 +3099,10 @@ function handleClearTripsClick() {
     return;
   }
 
-  dom.confirmTitle.textContent = 'Limpiar viajes';
+  dom.confirmTitle.textContent = 'Eliminar historial de viajes';
   dom.confirmMessage.textContent =
-    `¿Estas seguro de eliminar todos los viajes de "${vehicle.name}"?`;
+    `Se eliminaran los ${state.trips.length} viajes de "${vehicle.name}" de forma PERMANENTE. ` +
+    `Los saldos entre pilotos no cambian (lo consumido ya esta cobrado), pero el historial no se puede recuperar. ¿Continuar?`;
 
   const btnText = dom.btnConfirmOk.querySelector('.btn-text');
   if (btnText) btnText.textContent = 'Limpiar';
@@ -2975,8 +3122,9 @@ function handleClearTripsClick() {
       if (totalLiters > 0 || totalCost > 0) {
         await applyPoolDelta(vehicle, totalLiters, totalCost);
       }
-      showToast('Viajes eliminados');
+      showToast('Historial de viajes eliminado');
       haptic();
+      closeVehicleModal(); // v19.5: el boton vive en el modal de edicion
       state.trips = [];
       state.dashboardLoaded = false;
       // v19.1: el cascade borro filas del ledger y el pool cambio —
@@ -4199,8 +4347,25 @@ function bindEvents() {
   // Delete vehicle
   $('#btn-delete-vehicle').addEventListener('click', handleDeleteVehicleClick);
 
-  // Clear trips
+  // Clear trips (v19.5: vive en la zona de peligro del modal de vehiculo)
   $('#btn-clear-trips').addEventListener('click', handleClearTripsClick);
+
+  // v19.5: filtro por piloto en el historial de viajes
+  document.getElementById('trip-filter-chips').addEventListener('click', (e) => {
+    const chip = e.target.closest('.tf-chip');
+    if (!chip) return;
+    state.tripFilterDriver = chip.dataset.driver || null;
+    state.tripsShowAll = false;
+    renderTrips();
+    haptic();
+  });
+
+  // v19.5: "ver mas" de cargas + info del precio pool en el header de la tabla
+  document.getElementById('btn-more-payments').addEventListener('click', () => {
+    state.paymentsShowAll = true;
+    renderPaymentHistory();
+  });
+  document.getElementById('pool-info-btn').addEventListener('click', showEstimatedExplanation);
 
   // Vehicle modal
   $('#btn-close-modal').addEventListener('click', closeVehicleModal);
