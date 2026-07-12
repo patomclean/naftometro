@@ -1,4 +1,4 @@
-console.log("🚀 Naftómetro v19.5 cargado correctamente — Historial compacto: meses colapsables, filtro por piloto");
+console.log("🚀 Naftómetro v19.6 cargado correctamente — Chips sticky + adios al tilde del modelo viejo");
 
 // ============================================================
 // 1. CONSTANTS & CONFIGURATION
@@ -1683,14 +1683,10 @@ function renderDriverPill(selectEl, avEl, nameEl) {
   nameEl.classList.remove('cn-driver-empty');
 }
 
-// v15.1: Determine if trip is truly verified (has a full-tank payment after it)
-function isTripVerified(trip) {
-  if (!trip.is_reconciled) return false;
-  const tripDate = getEventDate(trip);
-  return state.payments.some(p =>
-    p.is_full_tank && p.liters_loaded > 0 && getEventDate(p) > tripDate
-  );
-}
+// v19.6: eliminado el ✓ "Precio verificado" (isTripVerified). Era del modelo
+// viejo: lo marcaba la reconciliacion que ajustaba viajes — el mismo
+// mecanismo roto del correction_factor 4.83 (habia viajes de $900/km con ✓).
+// Transmitia una confianza que no merecia; el modelo pool no marca viajes.
 
 // v19.5: historial compacto — meses colapsables con resumen, "ver mas" en
 // el mes actual, filas de 1 linea con detalle expandible (acciones ocultas)
@@ -1743,16 +1739,9 @@ function buildTripRow(trip, vehicleDrivers) {
     <td data-label="Fecha ">${formatDate(trip.occurred_at || trip.created_at)}</td>
     <td data-label="Piloto " style="color:${pilotColor};font-weight:600">${trip.driver}</td>
     <td data-label="Km ">${Number(trip.km).toLocaleString('es-AR')}</td>
-    <td data-label="Costo "><strong>${formatCurrency(trip.cost)}</strong>${isTripVerified(trip) ? '<span class="reconciled-check" title="Precio verificado">✓</span>' : ''}</td>
+    <td data-label="Costo "><strong>${formatCurrency(trip.cost)}</strong></td>
     <td data-label="Nota " class="trip-note">${trip.note || '-'}<span class="trip-caret">&#8250;</span></td>
   `;
-  const reconBadge = tr.querySelector('.reconciled-check');
-  if (reconBadge) {
-    reconBadge.addEventListener('click', (e) => {
-      e.stopPropagation();
-      showReconciliationBreakdown(trip);
-    });
-  }
 
   const detail = document.createElement('tr');
   detail.className = 'trip-detail-row hidden';
@@ -2453,70 +2442,8 @@ function showPaymentBreakdown(payment) {
   }, 100);
 }
 
-// v14.2: Show reconciliation breakdown popup
-function showReconciliationBreakdown(trip) {
-  const existing = document.querySelector('.payment-breakdown-popup');
-  if (existing) existing.remove();
-
-  // v15: Find closing full-tank payment photo
-  let ticketPhotoUrl = null;
-  if (trip.reconciled_at) {
-    const reconDate = new Date(trip.reconciled_at);
-    const closingPayment = state.payments
-      .filter(p => p.is_full_tank && p.photo_url)
-      .sort((a, b) => Math.abs(getEventDate(a) - reconDate) - Math.abs(getEventDate(b) - reconDate))
-      [0];
-    if (closingPayment && Math.abs(getEventDate(closingPayment) - reconDate) < 86400000) {
-      ticketPhotoUrl = closingPayment.photo_url;
-    }
-  }
-
-  const popup = document.createElement('div');
-  popup.className = 'payment-breakdown-popup ticket-popup';
-
-  const reconDateStr = trip.reconciled_at ? formatDate(trip.reconciled_at) : '—';
-  const origConsumption = trip.original_consumption ? Number(trip.original_consumption).toFixed(1) : '—';
-  const realConsumption = trip.real_consumption ? Number(trip.real_consumption).toFixed(1) : '—';
-
-  popup.innerHTML = `
-    <button class="breakdown-close" id="breakdown-close-btn">&times;</button>
-    <div class="breakdown-row" style="font-weight:600;margin-bottom:0.5rem">
-      ✓ Precio Verificado
-    </div>
-    <div class="breakdown-row">
-      <span>Este viaje fue ajustado al costo real del surtidor.</span>
-    </div>
-    <div class="breakdown-row">
-      <span>Consumo estimado:</span>
-      <strong>${origConsumption} km/l</strong>
-    </div>
-    <div class="breakdown-row">
-      <span>Consumo real:</span>
-      <strong>${realConsumption} km/l</strong>
-    </div>
-    <div class="breakdown-row total-row">
-      <span>Verificado el:</span>
-      <strong>${reconDateStr}</strong>
-    </div>
-    ${ticketPhotoUrl ? '<div class="breakdown-row"><button class="btn-view-ticket" id="btn-recon-view-ticket">&#128247; Ver Ticket Original</button></div>' : ''}
-  `;
-
-  document.body.appendChild(popup);
-  popup.querySelector('#breakdown-close-btn').addEventListener('click', () => popup.remove());
-  const viewTicketBtn = popup.querySelector('#btn-recon-view-ticket');
-  if (viewTicketBtn) {
-    viewTicketBtn.addEventListener('click', () => openPhotoViewer(ticketPhotoUrl));
-  }
-  setTimeout(() => {
-    const handler = (e) => {
-      if (!popup.contains(e.target)) {
-        popup.remove();
-        document.removeEventListener('click', handler);
-      }
-    };
-    document.addEventListener('click', handler);
-  }, 100);
-}
+// v14.2: showReconciliationBreakdown() eliminada en v19.6 junto con el ✓
+// (popup del "precio verificado" del modelo viejo).
 
 // v15.1 / v19.2: Popup — explica el precio del pool (final, no se recalcula)
 function showEstimatedExplanation() {
