@@ -2,7 +2,7 @@
 
 ## Linea de Tiempo del Proyecto
 
-El proyecto se desarrolla desde el 12 de febrero de 2026, con 40+ commits. La version actual es v19.4. La evolucion se organiza en fases:
+El proyecto se desarrolla desde el 12 de febrero de 2026, con 40+ commits. La version actual es v19.5. La evolucion se organiza en fases:
 
 ---
 
@@ -459,6 +459,17 @@ Analisis del centro de finanzas encontro que los 2 flujos de saldado se contrade
 - **Bug latente corregido por las RPCs**: la policy `vehicles_update` es owner-only — un miembro no-dueño que registraba un viaje insertaba trip+ledger pero el UPDATE del pool fallaba por RLS (invariante rota silenciosa). No habia explotado porque las cargas las hacia el owner.
 - **Health check**: al abrir un vehiculo se compara `SUM(ledger)` vs `pool_costo`; si difieren >$0,05 se avisa con toast y console.warn.
 - El cliente usa las RPCs con **fallback al camino legacy** si la funcion no existe (`isMissingRpc`): el deploy del codigo y la corrida del SQL pueden ir en cualquier orden.
+
+**v19.5 — Historial compacto (Julio 2026):**
+
+Rediseño de "El Vehiculo" para que el historial no se vuelva un scroll infinito con el paso de los meses (~10 viajes/mes = 120+ filas al año):
+- **Viajes agrupados por mes**: el actual abierto (ultimas 10 + boton "Ver mas"), los anteriores colapsados con resumen en el header (`Junio 2026 — 5 viajes · 250 km · $60.000`). El resumen mensual convierte el archivo en informacion comparable.
+- **Filas de 1 linea** (Fecha · Piloto · Km · Costo · Nota): litros, tipo de manejo y las acciones editar/eliminar viven en un detalle expandible al tocar la fila. Menos ruido y cero borrados accidentales. El badge "Pool" por fila se reemplazo por un unico ⓘ en el header de COSTO (popup del precio pool); el ✓ legacy sigue por fila.
+- **Filtro por piloto**: chips de colores (PILOT_COLORS) sobre la tabla; los resumenes mensuales se recalculan con el filtro aplicado.
+- **Cargas**: ultimas 5 + "Ver N cargas anteriores"; el footer de acciones (foto/desglose/editar/eliminar) aparece al tocar la card.
+- **"Limpiar viajes" fuera de la vista principal**: era un boton rojo destructivo a un tap del historial. Ahora vive en la zona de peligro del modal "Editar vehiculo" con confirmacion explicita (cantidad de viajes + aviso de permanencia); al confirmar cierra el modal.
+- **Estado del Capital corregido**: los dueños de la nafta del tanque son los ACREEDORES del ledger (mismo criterio que la Smart Card) — antes decia "pagados por PAPÁ" (quien cargo desde el ultimo tanque lleno) contradiciendo los saldos. Label "Precio Prom" → "Precio del pool".
+- Verificado en preview local con estado inyectado (agrupacion, colapso, ver-mas, filtro, cards, zona de peligro) — el screenshot del preview sigue colgandose, validacion por DOM/estilos computados como esta documentado.
 
 **v19.2 — UI alineada al modelo pool (Julio 2026):**
 
