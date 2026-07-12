@@ -1,4 +1,4 @@
-console.log("🚀 Naftómetro v19.3 cargado correctamente — Saldar Deuda unificado con el plan de clearing");
+console.log("🚀 Naftómetro v19.4 cargado correctamente — Smart Card con desglose + feed completo + RPCs atomicas");
 
 // ============================================================
 // 1. CONSTANTS & CONFIGURATION
@@ -96,13 +96,36 @@ function calculatePoolTripCost(vehicle, km, driveType) {
   return { liters: +liters.toFixed(2), cost: +cost.toFixed(2), price, kmL };
 }
 
+// v19.4: detecta "la RPC no existe todavia" (SQL aun no corrido en Supabase)
+// para caer al camino legacy — el deploy de codigo y el SQL pueden ir en
+// cualquier orden sin romper la app.
+function isMissingRpc(error) {
+  if (!error) return false;
+  return error.code === '42883' || error.code === 'PGRST202' ||
+    /could not find the function|does not exist/i.test(error.message || '');
+}
+
 // Aplica un delta al pool y lo persiste. NO clampa pool_costo: la
 // conservacion (SUM ledger = pool_costo) esta por encima de la cosmetica;
 // el clamp visual se hace solo al MOSTRAR el tanque.
+// v19.4: via RPC SECURITY DEFINER — la policy vehicles_update es owner-only,
+// asi que un miembro no-dueño NO podia actualizar el pool por el camino
+// directo (invariante rota silenciosa). Fallback legacy si la RPC no existe.
 async function applyPoolDelta(vehicle, deltaLitros, deltaCosto) {
   const newL = +((Number(vehicle.pool_litros) || 0) + deltaLitros).toFixed(2);
   const newC = +((Number(vehicle.pool_costo) || 0) + deltaCosto).toFixed(2);
-  await updateVehicle(vehicle.id, { pool_litros: newL, pool_costo: newC });
+  const { error } = await db.rpc('apply_pool_delta', {
+    p_vehicle_id: vehicle.id,
+    p_delta_litros: deltaLitros,
+    p_delta_costo: deltaCosto,
+  });
+  if (error) {
+    if (isMissingRpc(error)) {
+      await updateVehicle(vehicle.id, { pool_litros: newL, pool_costo: newC });
+    } else {
+      throw error;
+    }
+  }
   vehicle.pool_litros = newL;
   vehicle.pool_costo = newC;
   return { newL, newC };
@@ -698,7 +721,22 @@ function renderSmartCard() {
     // Saldo positivo: te deben
     dom.smartCard.classList.add('clear');
     dom.smartCardAmount.textContent = '+' + formatCurrency(myBalance);
-    dom.smartCardStatus.textContent = 'Te deben plata';
+    // v19.4: desglose — lo que te van a transferir los deudores (segun el
+    // plan de clearing) vs tu credito respaldado por nafta en el tanque
+    // (un activo: se recupera solo, a medida que el auto se usa).
+    const incoming = getClearingPlan()
+      .filter(t => t.to === myDriverName)
+      .reduce((s, t) => s + t.amount, 0);
+    const cash = +Math.min(incoming, myBalance).toFixed(2);
+    const fuel = +(myBalance - cash).toFixed(2);
+    if (cash > 0.01 && fuel > 0.01) {
+      dom.smartCardStatus.innerHTML =
+        `Te deben ${formatCurrency(cash)} en efectivo<br>+ ${formatCurrency(fuel)} en nafta del tanque`;
+    } else if (fuel > 0.01) {
+      dom.smartCardStatus.textContent = 'Credito respaldado por nafta en el tanque';
+    } else {
+      dom.smartCardStatus.textContent = 'Te deben plata';
+    }
   } else {
     // Saldo negativo: debés — mostrar botón Saldar
     dom.smartCard.classList.add('debt');
@@ -724,6 +762,34 @@ function buildActivityItems() {
       title: isSett ? `${p.driver} saldo su cuenta` : `${p.driver} cargo nafta`,
       meta: p.note || '',
       amount: '+' + formatCurrency(p.amount),
+    });
+  });
+
+  // v19.4: movimientos del ledger que cambian saldos SIN accion del usuario
+  // (reconciliaciones de tanque y la migracion al modelo v2) — son los que
+  // mas preguntas generan, tienen que ser visibles y explicarse solos.
+  const autoEntries = state.ledger.filter(e =>
+    e.type === 'tank_audit_adjustment' || e.type === 'migration_v2');
+  const autoGroups = {};
+  autoEntries.forEach(e => {
+    // agrupar por tipo + minuto (una reconciliacion inserta varias entradas juntas)
+    const key = e.type + '|' + new Date(e.created_at).toISOString().slice(0, 16);
+    if (!autoGroups[key]) autoGroups[key] = { type: e.type, date: new Date(e.created_at), entries: [] };
+    autoGroups[key].entries.push(e);
+  });
+  Object.values(autoGroups).forEach(g => {
+    const isAudit = g.type === 'tank_audit_adjustment';
+    const parts = g.entries.map(e =>
+      `${e.driver} ${Number(e.amount) >= 0 ? '+' : '−'}${formatCurrency(Math.abs(Number(e.amount)))}`);
+    const desc = isAudit ? (g.entries[0].description || '') : '';
+    items.push({
+      type: 'ledger-auto',
+      date: g.date,
+      icon: isAudit ? '&#9878;&#65039;' : '&#128260;',
+      iconClass: 'fuel',
+      title: isAudit ? 'Reconciliacion de tanque (reparto por uso)' : 'Migracion al modelo v2 — ajuste de saldos',
+      meta: (desc ? desc + ' · ' : '') + parts.join(' · '),
+      amount: '',
     });
   });
 
@@ -2695,6 +2761,19 @@ async function selectVehicle(vehicleId) {
       state.ledger = await fetchLedger(vehicleId);
     }
 
+    // v19.4: health check de la invariante — si SUM(ledger) se aparta de
+    // pool_costo, algo la rompio (corte de red a mitad de operacion, write
+    // fallido por RLS, etc). Avisar temprano en vez de descubrirlo cuando
+    // los numeros no cierran.
+    if (vehicle && vehicle.pool_costo !== null && vehicle.pool_costo !== undefined) {
+      const sumLedger = +state.ledger.reduce((s, e) => s + Number(e.amount), 0).toFixed(2);
+      const drift = +(sumLedger - Number(vehicle.pool_costo)).toFixed(2);
+      if (Math.abs(drift) > 0.05) {
+        console.warn(`[Naftometro] Invariante rota: SUM(ledger)=${sumLedger} vs pool_costo=${vehicle.pool_costo} (dif ${drift})`);
+        showToast(`⚠️ Descuadre contable de ${formatCurrency(Math.abs(drift))} — avisale al administrador`, 'error');
+      }
+    }
+
     renderTrips();
     renderSummary();
     renderBalances();
@@ -3273,24 +3352,43 @@ async function handlePaymentSubmit(e) {
       showToast('Carga actualizada');
       state.payments = await fetchPayments(state.activeVehicleId);
     } else {
-      const createdPayment = await createPayment(paymentData);
-
-      // v17: Fuel payment = credit (v18.17: neto del descuento/reintegro)
-      await insertLedgerEntry({
-        vehicle_id: state.activeVehicleId, driver,
-        type: 'fuel_payment', amount: +(amount - discountAmount),
-        ref_id: createdPayment.id,
-        description: litersLoaded ? `Carga ${litersLoaded} lts` : `Pago combustible`
+      // v19.4: RPC atomica — payment + ledger + pool (+ last_full_tank_at)
+      // en UNA transaccion. Fallback al camino legacy si la RPC no existe.
+      const { error: rpcErr } = await db.rpc('register_fuel_payment_v2', {
+        p_vehicle_id: state.activeVehicleId,
+        p_driver: driver,
+        p_amount: amount,
+        p_liters: litersLoaded,
+        p_price_per_liter: paymentData.price_per_liter,
+        p_is_full_tank: isFullTank,
+        p_invoice_type: invoiceType,
+        p_tax_perceptions: fiscalPerceptions,
+        p_discount: discountAmount,
+        p_note: paymentData.note,
+        p_photo_url: paymentData.photo_url || null,
+        p_occurred_at: paymentData.occurred_at,
       });
-      // v19: la carga entra al pool — litros + costo EFECTIVO (neto de
-      // descuento, con percepciones de Factura A incluidas en el monto).
-      // Mismo neto que el credito del ledger -> conserva la invariante.
-      if (litersLoaded && litersLoaded > 0) {
-        const poolVehicle = getActiveVehicle();
-        if (poolVehicle) {
-          await applyPoolDelta(poolVehicle, litersLoaded, amount - discountAmount);
-          if (isFullTank) {
-            await updateVehicle(poolVehicle.id, { last_full_tank_at: paymentData.occurred_at });
+      if (rpcErr) {
+        if (!isMissingRpc(rpcErr)) throw rpcErr;
+        const createdPayment = await createPayment(paymentData);
+
+        // v17: Fuel payment = credit (v18.17: neto del descuento/reintegro)
+        await insertLedgerEntry({
+          vehicle_id: state.activeVehicleId, driver,
+          type: 'fuel_payment', amount: +(amount - discountAmount),
+          ref_id: createdPayment.id,
+          description: litersLoaded ? `Carga ${litersLoaded} lts` : `Pago combustible`
+        });
+        // v19: la carga entra al pool — litros + costo EFECTIVO (neto de
+        // descuento, con percepciones de Factura A incluidas en el monto).
+        // Mismo neto que el credito del ledger -> conserva la invariante.
+        if (litersLoaded && litersLoaded > 0) {
+          const poolVehicle = getActiveVehicle();
+          if (poolVehicle) {
+            await applyPoolDelta(poolVehicle, litersLoaded, amount - discountAmount);
+            if (isFullTank) {
+              await updateVehicle(poolVehicle.id, { last_full_tank_at: paymentData.occurred_at });
+            }
           }
         }
       }
@@ -3373,8 +3471,8 @@ async function performTankAudit() {
     if (cycleKmL >= 4 && cycleKmL <= 25) {
       const prev = Number(vehicle.km_l_aprendido) || 0;
       learnedNow = prev > 0 ? +((prev + cycleKmL) / 2).toFixed(2) : +cycleKmL.toFixed(2);
-      await updateVehicle(vehicle.id, { km_l_aprendido: learnedNow });
       vehicle.km_l_aprendido = learnedNow;
+      // v19.4: se persiste junto con el reanclaje del pool (set_pool_anchor)
     }
   }
 
@@ -3409,7 +3507,21 @@ async function performTankAudit() {
   // el ledger (invariante intacta). Si NO se pudo atribuir (sin viajes en
   // el ciclo), el costo queda en el pool y el precio lo absorbe.
   const newPoolC = redistributed ? +(poolC - gapCost).toFixed(2) : poolC;
-  await updateVehicle(vehicle.id, { pool_litros: tankCap, pool_costo: newPoolC });
+  // v19.4: reanclaje via RPC SECURITY DEFINER (la policy vehicles_update es
+  // owner-only y la reconciliacion puede dispararla cualquier miembro).
+  const { error: anchorErr } = await db.rpc('set_pool_anchor', {
+    p_vehicle_id: vehicle.id,
+    p_pool_litros: tankCap,
+    p_pool_costo: newPoolC,
+    p_km_l: learnedNow,
+    p_last_full_tank_at: null,
+  });
+  if (anchorErr) {
+    if (!isMissingRpc(anchorErr)) throw anchorErr;
+    const legacyUpdates = { pool_litros: tankCap, pool_costo: newPoolC };
+    if (learnedNow) legacyUpdates.km_l_aprendido = learnedNow;
+    await updateVehicle(vehicle.id, legacyUpdates);
+  }
   vehicle.pool_litros = tankCap;
   vehicle.pool_costo = newPoolC;
 
@@ -3713,27 +3825,43 @@ async function handleTripSubmit(e) {
       }
       showToast('Viaje actualizado');
     } else {
-      const createdTrip = await createTrip({
-        vehicle_id: state.activeVehicleId,
-        driver,
-        km,
-        note: dom.tripNote.value.trim() || null,
-        liters,
-        cost,
-        drive_type: driveType,
-        occurred_at: occurredAt,
+      // v19.4: RPC atomica — trip + ledger + pool en UNA transaccion.
+      // Fallback al camino legacy (3 writes) si la RPC no existe todavia.
+      const note = dom.tripNote.value.trim() || null;
+      const { error: rpcErr } = await db.rpc('register_trip_v2', {
+        p_vehicle_id: state.activeVehicleId,
+        p_driver: driver,
+        p_km: km,
+        p_liters: liters,
+        p_cost: cost,
+        p_drive_type: driveType,
+        p_note: note,
+        p_occurred_at: occurredAt,
       });
-      // v17: Insert ledger entry (trip_cost = debit)
-      await insertLedgerEntry({
-        vehicle_id: state.activeVehicleId,
-        driver,
-        type: 'trip_cost',
-        amount: -(+cost),
-        ref_id: createdTrip.id,
-        description: `Viaje ${km} km (${driveType})`
-      });
-      // v19: el viaje saca litros y costo del pool (conserva SUM ledger = pool_costo)
-      await applyPoolDelta(vehicle, -liters, -cost);
+      if (rpcErr) {
+        if (!isMissingRpc(rpcErr)) throw rpcErr;
+        const createdTrip = await createTrip({
+          vehicle_id: state.activeVehicleId,
+          driver,
+          km,
+          note,
+          liters,
+          cost,
+          drive_type: driveType,
+          occurred_at: occurredAt,
+        });
+        // v17: Insert ledger entry (trip_cost = debit)
+        await insertLedgerEntry({
+          vehicle_id: state.activeVehicleId,
+          driver,
+          type: 'trip_cost',
+          amount: -(+cost),
+          ref_id: createdTrip.id,
+          description: `Viaje ${km} km (${driveType})`
+        });
+        // v19: el viaje saca litros y costo del pool (conserva SUM ledger = pool_costo)
+        await applyPoolDelta(vehicle, -liters, -cost);
+      }
       showToast('Viaje registrado');
     }
     haptic();

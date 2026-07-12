@@ -465,6 +465,7 @@ CREATE INDEX idx_payments_full_tank ON payments (vehicle_id, is_full_tank)
 | `v18.5_audit_logs.sql` | v18.5 | Tabla audit_logs, triggers AFTER INSERT/DELETE en trips y payments, indice |
 | `v19.0_modelo_v2_pool.sql` | v19.0 | Nuevas columnas en vehicles (pool_litros, pool_costo, km_l_aprendido), tipo `migration_v2` agregado al CHECK de ledger.type, deprecacion de current_ppp/virtual_liters/correction_factor |
 | `v19.0_data_migracion_taos.sql` | v19.0 | Migracion de datos (one-off, no reusable): restateo de saldos via modelo plata+km para el vehiculo Taos, inicializacion del pool con ancla real |
+| `v19.4_rpc_atomicas.sql` | v19.4 | 4 RPCs SECURITY DEFINER (guardia is_vehicle_member): apply_pool_delta, set_pool_anchor, register_trip_v2, register_fuel_payment_v2. Atomicidad viaje/carga (insert+ledger+pool en 1 transaccion) y fix del RLS owner-only de vehicles_update que impedia a miembros actualizar el pool |
 
 ---
 

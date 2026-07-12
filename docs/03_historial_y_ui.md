@@ -2,7 +2,7 @@
 
 ## Linea de Tiempo del Proyecto
 
-El proyecto se desarrolla desde el 12 de febrero de 2026, con 40+ commits. La version actual es v19.3. La evolucion se organiza en fases:
+El proyecto se desarrolla desde el 12 de febrero de 2026, con 40+ commits. La version actual es v19.4. La evolucion se organiza en fases:
 
 ---
 
@@ -450,6 +450,15 @@ Analisis del centro de finanzas encontro que los 2 flujos de saldado se contrade
 - **Sugerencia = Liquidacion sugerida**: el acreedor y monto pre-cargados salen del MISMO algoritmo greedy (`getClearingPlan()`) que el cuadro "Liquidacion sugerida" — antes la card mandaba el 100% de la deuda al acreedor mas rico (`findMainCreditor`, eliminada), lo que podia dejar a un acreedor en negativo (ej: PAPÁ recibiendo $217k con credito de $182k).
 - **Topes**: el monto no puede superar la deuda del deudor ni el credito actual del acreedor (nadie queda en negativo artificial ni con credito ficticio sin nafta que lo respalde).
 - Los saldados legacy ya guardados en `payments` se siguen renderizando (solo cambio como se crean los nuevos).
+
+**v19.4 — Transparencia del modelo v2 + RPCs atomicas (Julio 2026):**
+
+- **Smart Card con desglose**: el saldo positivo ahora distingue "Te deben $X en efectivo" (lo que los deudores van a transferir segun el plan de clearing) de "+$Y en nafta del tanque" (credito respaldado por nafta fisica, se recupera al consumirse). Evita el "¿por que me sigue figurando saldo si ya me pagaron todos?".
+- **Feed de Finanzas completo**: las entradas `tank_audit_adjustment` (reconciliaciones) y `migration_v2` aparecen en el feed agrupadas por evento, con el reparto por piloto — los unicos movimientos que cambian saldos sin accion del usuario ahora se explican solos.
+- **RPCs atomicas** (`v19.4_rpc_atomicas.sql`): `register_trip_v2` y `register_fuel_payment_v2` hacen insert + ledger + pool en UNA transaccion (un corte de red ya no puede dejar la invariante rota a mitad de camino); `apply_pool_delta` y `set_pool_anchor` para el resto de los flujos. Todas SECURITY DEFINER con guardia `is_vehicle_member`.
+- **Bug latente corregido por las RPCs**: la policy `vehicles_update` es owner-only — un miembro no-dueño que registraba un viaje insertaba trip+ledger pero el UPDATE del pool fallaba por RLS (invariante rota silenciosa). No habia explotado porque las cargas las hacia el owner.
+- **Health check**: al abrir un vehiculo se compara `SUM(ledger)` vs `pool_costo`; si difieren >$0,05 se avisa con toast y console.warn.
+- El cliente usa las RPCs con **fallback al camino legacy** si la funcion no existe (`isMissingRpc`): el deploy del codigo y la corrida del SQL pueden ir en cualquier orden.
 
 **v19.2 — UI alineada al modelo pool (Julio 2026):**
 
