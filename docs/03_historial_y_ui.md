@@ -2,7 +2,7 @@
 
 ## Linea de Tiempo del Proyecto
 
-El proyecto se desarrolla desde el 12 de febrero de 2026, con 40+ commits. La version actual es v19.5. La evolucion se organiza en fases:
+El proyecto se desarrolla desde el 12 de febrero de 2026, con 40+ commits. La version actual es v19.6. La evolucion se organiza en fases:
 
 ---
 
@@ -470,6 +470,10 @@ Rediseño de "El Vehiculo" para que el historial no se vuelva un scroll infinito
 - **"Limpiar viajes" fuera de la vista principal**: era un boton rojo destructivo a un tap del historial. Ahora vive en la zona de peligro del modal "Editar vehiculo" con confirmacion explicita (cantidad de viajes + aviso de permanencia); al confirmar cierra el modal.
 - **Estado del Capital corregido**: los dueños de la nafta del tanque son los ACREEDORES del ledger (mismo criterio que la Smart Card) — antes decia "pagados por PAPÁ" (quien cargo desde el ultimo tanque lleno) contradiciendo los saldos. Label "Precio Prom" → "Precio del pool".
 - Verificado en preview local con estado inyectado (agrupacion, colapso, ver-mas, filtro, cards, zona de peligro) — el screenshot del preview sigue colgandose, validacion por DOM/estilos computados como esta documentado.
+
+**v19.6 — Pulido post-feedback (Julio 2026):**
+- **Chips de filtro sticky**: el usuario no los encontraba (quedaban arriba del scroll) — ahora quedan pegados arriba mientras se recorre el historial.
+- **Eliminado el ✓ "Precio verificado"**: lo marcaba la reconciliacion del modelo viejo — el mismo mecanismo roto del correction_factor 4.83 (habia viajes de ~$900/km con tilde). Transmitia confianza inmerecida. `isTripVerified()` y `showReconciliationBreakdown()` eliminadas.
 
 **v19.2 — UI alineada al modelo pool (Julio 2026):**
 
